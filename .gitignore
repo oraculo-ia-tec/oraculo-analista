@@ -1,0 +1,29 @@
+# Pastas e arquivos gerados automaticamente
+__pycache__/
+*.pyc
+*.log
+
+# Ambiente virtual
+venv/
+ENV/
+
+# Dependências locais
+/node_modules
+/.vscode
+
+# Variáveis de ambiente
+.env
+config.yaml
+config_handler.py
+
+0.26.0
+0.26.0'
+
+.streamlit
+db.sqlite3
+oraculo-coach
+
+.xlsx
+.html
+Lib/
+Scripts/
