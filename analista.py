@@ -125,6 +125,12 @@ def carregar_arquivos():
     return []
 
 
+def obter_avatar_usuario(user_id):
+    caminho_avatar = f"./src/img/usuarios/{user_id}.jpg"
+    return caminho_avatar if os.path.exists(caminho_avatar) else icons["user"]
+
+
+
 # Interface principal do Streamlit
 def oraculo_analista():
     st.title("Chatbot Poderoso para Análise de Documentos")
@@ -196,46 +202,39 @@ def oraculo_analista():
             "content": '🌟 Bem-vindo ao Oráculo Analista! Estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡'
         }]
 
-    # Exibir mensagens anteriores
+    # Exibir mensagens anteriores com perfil do usuário
     for message in st.session_state.messages:
-        avatar_image = icons[message["role"]]
+        user_id = message.get("user_id", "default")
+        avatar_image = obter_avatar_usuario(user_id) if message["role"] == "user" else icons["assistant"]
+
         with st.chat_message(message["role"], avatar=avatar_image):
             st.write(message["content"])
 
     # Entrada do usuário
     if prompt := st.chat_input("Digite sua pergunta aqui:"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar=icons["user"]):
+        user_id = st.session_state.get("user_id", "default")
+        avatar_image = obter_avatar_usuario(user_id)
+
+        st.session_state.messages.append({"role": "user", "content": prompt, "user_id": user_id})
+        with st.chat_message("user", avatar=avatar_image):
             st.write(prompt)
 
-    # Gerar resposta do assistente
-    if st.session_state.messages[-1]["role"] != "assistant":
+        # Geração da resposta
         with st.chat_message("assistant", avatar=icons["assistant"]):
             try:
-                # Montar o full_prompt combinando o system_prompt, o conteúdo dos documentos e a pergunta do usuário
                 system_prompt = f"""
                 Você é o Oráculo Analista, especializado em responder perguntas sobre documentos carregados.
-                Responda apenas com base no conteúdo fornecido abaixo.
                 Conteúdo dos documentos carregados:
                 {st.session_state.get('full_content', '')}
                 """
                 full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
 
-                # Stream da resposta usando Replicate
                 full_response = ""
                 stream = replicate.stream(
                     "deepseek-ai/deepseek-r1",
-                    input={
-                        "top_p": 1,
-                        "prompt": full_prompt,
-                        "max_tokens": 2048,
-                        "temperature": 0.1,
-                        "presence_penalty": 0,
-                        "frequency_penalty": 0
-                    },
+                    input={"top_p": 1, "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.1}
                 )
 
-                # Exibir a resposta em streaming
                 with st.spinner("Gerando análise..."):
                     response_container = st.empty()
                     for event in stream:
@@ -243,12 +242,9 @@ def oraculo_analista():
                         clean_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
                         response_container.markdown(clean_response)
 
-                # Salvar a resposta completa no histórico
                 st.session_state.messages.append({"role": "assistant", "content": clean_response})
-
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {str(e)}")
-
 
 if __name__ == "__main__":
     oraculo_analista()
