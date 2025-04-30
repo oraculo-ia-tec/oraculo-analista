@@ -91,9 +91,11 @@ icons = {
     "user": "./src/img/usuario.jpg"
 }
 
-def obter_avatar_usuario(user_email):
-    caminho_avatar = os.path.join(PROFILE_IMAGES_DIR, f"{user_email}.png")
-    return caminho_avatar if os.path.exists(caminho_avatar) else icons["user"]
+def obter_avatar_usuario():
+    if "image" in st.session_state:
+        return st.session_state.image
+    else:
+        return icons["user"]
 
 # Carregar arquivos (função permanece igual ao original)
 def carregar_arquivos():
@@ -134,16 +136,14 @@ def oraculo_analista():
 
     # Exibir mensagens anteriores com perfil do usuário
     for message in st.session_state.messages:
-        user_email = st.session_state.get("user_email", "default")
-        avatar_image = obter_avatar_usuario(user_email) if message["role"] == "user" else icons["assistant"]
+        avatar_image = obter_avatar_usuario() if message["role"] == "user" else icons["assistant"]
 
         with st.chat_message(message["role"], avatar=avatar_image):
             st.write(message["content"])
 
     # Entrada do usuário
     if prompt := st.chat_input("Digite sua pergunta aqui:"):
-        user_email = st.session_state.get("user_email", "default")
-        avatar_image = obter_avatar_usuario(user_email)
+        avatar_image = obter_avatar_usuario()
 
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=avatar_image):
