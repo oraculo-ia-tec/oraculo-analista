@@ -10,80 +10,12 @@ import re
 import replicate
 from decouple import config
 
-# Verificar se o token está configurado
-REPLICATE_API_TOKEN = 'r8_9qyeytR9OiIobAQ1f0TzU3TGKJBLSzI0ti8Jp'
-
-
-# Funções de leitura de arquivos (mantidas iguais ao código anterior)
-def read_xlsx(file):
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with pd.ExcelFile(file) as xls:
-        with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-            for sheet_name in xls.sheet_names:
-                df = pd.read_excel(xls, sheet_name=sheet_name)
-                txt_file.write(f'--- Aba: {sheet_name} ---\n')
-                df.to_csv(txt_file, sep='\t', index=False, header=True)
-                txt_file.write('\n')
-    with open(caminho_arquivo, 'r', encoding='utf-8') as arquivo:
-        return arquivo.read()
-
-
-def read_pdf(file):
-    text = ""
-    pdf_reader = PdfReader(file)
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-        txt_file.write(text)
-    return text
-
-
-def read_json(file):
-    content = json.load(file)
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-        txt_file.write(json.dumps(content, indent=4))
-    return json.dumps(content, indent=4)
-
-
-def read_xml(file):
-    tree = ET.parse(file)
-    root = tree.getroot()
-    xml_str = ET.tostring(root, encoding='utf-8').decode('utf-8')
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-        txt_file.write(xml_str)
-    return xml_str
-
-
-def read_html(file):
-    html_content = file.read().decode("utf-8")
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-        txt_file.write(html_content)
-    return html_content
-
-
-def read_docx(file):
-    doc = Document(file)
-    text = ""
-    for paragraph in doc.paragraphs:
-        text += paragraph.text + "\n"
-    caminho_arquivo = f'./conhecimento/{os.path.splitext(os.path.basename(file.name))[0]}.txt'
-    with open(caminho_arquivo, 'w', encoding='utf-8') as txt_file:
-        txt_file.write(text)
-    return text
-
-
-def read_txt(file):
-    return file.read().decode("utf-8")
-
+# Configurar o token via variável de ambiente
+REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN')
 
 # Diretório das imagens de perfil
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
-
 
 # Dicionário de ícones
 icons = {
@@ -91,13 +23,48 @@ icons = {
     "user": "./src/img/usuario.jpg"
 }
 
-def obter_avatar_usuario():
-    if "image" in st.session_state:
-        return st.session_state.image
-    else:
-        return icons["user"]
+# Função para atualizar o primeiro nome no session_state
+def atualizar_primeiro_nome():
+    if "name" in st.session_state:
+        st.session_state.primeiro_nome = st.session_state.name.split(" ")[0]
 
-# Carregar arquivos (função permanece igual ao original)
+def obter_avatar_usuario():
+    return st.session_state.get("image", icons["user"])
+
+# Funções de leitura originais
+def read_xlsx(file):
+    text = ""
+    with pd.ExcelFile(file) as xls:
+        for sheet_name in xls.sheet_names:
+            df = pd.read_excel(xls, sheet_name=sheet_name)
+            text += f'--- Aba: {sheet_name} ---\n{df.to_string()}\n\n'
+    return text
+
+def read_pdf(file):
+    text = ""
+    pdf_reader = PdfReader(file)
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
+
+def read_json(file):
+    return json.dumps(json.load(file), indent=4)
+
+def read_xml(file):
+    tree = ET.parse(file)
+    return ET.tostring(tree.getroot(), encoding='utf-8').decode('utf-8')
+
+def read_html(file):
+    return file.read().decode("utf-8")
+
+def read_docx(file):
+    doc = Document(file)
+    return '\n'.join(paragraph.text for paragraph in doc.paragraphs)
+
+def read_txt(file):
+    return file.read().decode("utf-8")
+
+# Carregar arquivos
 def carregar_arquivos():
     uploaded_files = st.sidebar.file_uploader(
         "Coloque seu arquivo aqui:",
@@ -109,14 +76,33 @@ def carregar_arquivos():
     if st.sidebar.button('CARREGAR'):
         for file in uploaded_files:
             st.write(f"**Arquivo carregado:** {file.name}")
-            # Lógica para leitura dos arquivos, conforme tipo
-            # Utilize o código original aqui
+
+            if file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]:
+                conteudo = read_xlsx(file)
+            elif file.type == "application/pdf":
+                conteudo = read_pdf(file)
+            elif file.type == "application/json":
+                conteudo = read_json(file)
+            elif file.type in ["application/xml", "text/xml"]:
+                conteudo = read_xml(file)
+            elif file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
+                conteudo = read_docx(file)
+            elif file.type == "text/plain":
+                conteudo = read_txt(file)
+            elif file.type in ["text/html", "text/htm"]:
+                conteudo = read_html(file)
+            else:
+                conteudo = "Tipo de arquivo não suportado."
+
+            conteudos.append(conteudo)
 
     return conteudos
 
 # Interface principal
 def oraculo_analista():
-    st.title("Chatbot Poderoso para Análise de Documentos")
+    atualizar_primeiro_nome()
+
+    st.title(f"Olá, {st.session_state.get('primeiro_nome', 'Usuário')}! Bem-vindo ao Oráculo Analista!")
 
     conteudos = carregar_arquivos()
 
@@ -127,21 +113,17 @@ def oraculo_analista():
         for i, conteudo in enumerate(conteudos):
             st.text_area(f"Conteúdo do Arquivo {i+1}", conteudo, height=200)
 
-    # Inicializar estado da conversa
     if "messages" not in st.session_state.keys():
         st.session_state.messages = [{
             "role": "assistant",
-            "content": '🌟 Bem-vindo ao Oráculo Analista! Estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡'
+            "content": f'🌟 {st.session_state.get("primeiro_nome", "Usuário")}, estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡'
         }]
 
-    # Exibir mensagens anteriores com perfil do usuário
     for message in st.session_state.messages:
         avatar_image = obter_avatar_usuario() if message["role"] == "user" else icons["assistant"]
-
         with st.chat_message(message["role"], avatar=avatar_image):
             st.write(message["content"])
 
-    # Entrada do usuário
     if prompt := st.chat_input("Digite sua pergunta aqui:"):
         avatar_image = obter_avatar_usuario()
 
@@ -149,7 +131,6 @@ def oraculo_analista():
         with st.chat_message("user", avatar=avatar_image):
             st.write(prompt)
 
-        # Geração da resposta
         with st.chat_message("assistant", avatar=icons["assistant"]):
             try:
                 system_prompt = f"""
