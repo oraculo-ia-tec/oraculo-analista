@@ -10,10 +10,7 @@ from PIL import Image
 from streamlit_extras.colored_header import colored_header
 from decouple import config
 import bcrypt
-from analista import oraculo_analista, configurar_usuario_logado
-
-
-st.set_page_config(page_title="Oráculo Analista - Apresentação", layout="wide")
+from analista import oraculo_analista
 
 # Configurações
 DATABASE_URL = config("DATABASE_URL")
@@ -91,7 +88,6 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             "verification_code": codigo
         })
         st.session_state.temp_email = email
-        configurar_usuario_logado(novo)
         st.success("Cadastro realizado. Verifique o código enviado.")
         return True
     except Exception as e:
@@ -120,7 +116,6 @@ def verificar_codigo(email, codigo):
             st.session_state.logged_in = True
             st.session_state.codigo_confirmado = True
             st.session_state.temp_email = None
-            configurar_usuario_logado(user_fresh)
             st.rerun()
             return True
         st.error("Código incorreto.")
@@ -134,7 +129,7 @@ def autenticar_usuario(email, password):
     session = Session()
     try:
         user = session.query(UserAnalise).filter_by(email=email, is_verified=True).first()
-        if user and bcrypt.checkpw(password.encode(), user.password.encode()):
+        if user and user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
             return user
         st.error("Credenciais inválidas ou conta não verificada.")
         return None
@@ -142,8 +137,10 @@ def autenticar_usuario(email, password):
         session.close()
 
 # Interface
-
 def interface():
+    if st.session_state.get("logged_in"):
+        return  # Não renderiza interface se já estiver logado
+
     st.sidebar.title("Oráculo Analista")
     opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
 
@@ -169,7 +166,6 @@ def interface():
             if user:
                 st.session_state.user = user
                 st.session_state.logged_in = True
-                configurar_usuario_logado(user)
                 st.rerun()
 
     # Verificação de código separada
@@ -179,150 +175,150 @@ def interface():
         if st.button("Confirmar Código"):
             verificar_codigo(st.session_state.temp_email, codigo)
 
-
-# Estilo personalizado para o título e conteúdo
-st.markdown("""
-    <style>
-    .titulo-principal {
-        font-size: 3rem;
-        font-weight: bold;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .subtitulo {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: white;
-    }
-    .descricao-gradient {
-        font-size: 1.1rem;
-        background: -webkit-linear-gradient(45deg, violet, white);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown("""<div class='titulo-principal'>🚀 Oráculo Analista: Transformando Dados em Decisões Estratégicas</div>""", unsafe_allow_html=True)
-
-# Imagem representativa
-st.image("./src/img/oraculo-analista.jpg", width=700)
-
-st.markdown("---")
-
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("<div class='subtitulo'>📈 Aumento da Competitividade</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Análises ultrarrápidas que colocam sua empresa à frente do mercado<br>
-    - Decisões estratégicas baseadas em dados concretos e confiáveis<br>
-    - Vantagem competitiva real para crescer com segurança
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown("<div class='subtitulo'>🎯 Objetivo: Análises Precisas</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Extraia inteligência de documentos complexos com facilidade<br>
-    - Compreensão de dados vitais para acelerar estratégias<br>
-    - Menos achismo, mais assertividade nas decisões
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-col3, col4 = st.columns(2)
-with col3:
-    st.markdown("<div class='subtitulo'>🧠 Descomplicação de Dados Complexos</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Interface amigável para empresários<br>
-    - Informações transformadas em ações claras e aplicáveis<br>
-    - Inteligência de dados acessível sem precisar ser técnico
-    </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    st.markdown("<div class='subtitulo'>⚡ Agilidade na Tomada de Decisões</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Processamento rápido que responde no ritmo do seu negócio<br>
-    - Reduza o tempo entre problema e solução<br>
-    - Tome decisões urgentes com segurança e suporte confiável
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-col5, col6 = st.columns(2)
-with col5:
-    st.markdown("<div class='subtitulo'>🌱 Sustentabilidade e Ética</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Uso ético e inteligente dos dados<br>
-    - Alinhamento com práticas empresariais sustentáveis<br>
-    - Contribuição para decisões com impacto positivo a longo prazo
-    </div>
-    """, unsafe_allow_html=True)
-
-with col6:
-    st.markdown("<div class='subtitulo'>💼 Para Líderes Estratégicos</div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='descricao-gradient'>
-    - Ferramenta desenvolvida para CEOs, diretores e tomadores de decisão<br>
-    - Otimize fluxos e melhore reuniões com insights automáticos<br>
-    - Capacite sua liderança com inteligência preditiva
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-# Resumo final
-st.markdown("<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
-st.markdown("""
-<div class='descricao-gradient'>
-- Transforme dados brutos em <strong>inteligência acionável</strong><br>
-- Capacite sua empresa a reagir com agilidade e precisão<br>
-- Posicione sua marca no topo com o <strong>Oráculo Analista</strong>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
-
-# Apresentar vídeo
-st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
-st.video("https://youtu.be/tXaVP7fG4YY")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
-
-st.markdown("---")
-
-st.markdown("""
-<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>
-""", unsafe_allow_html=True)
-
-
 # Principal
 
 def main():
     if not st.session_state.get("logged_in"):
         interface()
+
+        # Estilo personalizado para o título e conteúdo
+        st.markdown("""
+            <style>
+            .titulo-principal {
+                font-size: 3rem;
+                font-weight: bold;
+                color: white;
+                text-align: center;
+                margin-bottom: 2rem;
+            }
+            .subtitulo {
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: white;
+            }
+            .descricao-gradient {
+                font-size: 1.1rem;
+                background: -webkit-linear-gradient(45deg, violet, white);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown(
+            """<div class='titulo-principal'>🚀 Oráculo Analista: Transformando Dados em Decisões Estratégicas</div>""",
+            unsafe_allow_html=True)
+
+        # Imagem representativa
+        st.image("./src/img/oraculo-analista.jpg", width=700)
+
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("<div class='subtitulo'>📈 Aumento da Competitividade</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Análises ultrarrápidas que colocam sua empresa à frente do mercado<br>
+            - Decisões estratégicas baseadas em dados concretos e confiáveis<br>
+            - Vantagem competitiva real para crescer com segurança
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown("<div class='subtitulo'>🎯 Objetivo: Análises Precisas</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Extraia inteligência de documentos complexos com facilidade<br>
+            - Compreensão de dados vitais para acelerar estratégias<br>
+            - Menos achismo, mais assertividade nas decisões
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        col3, col4 = st.columns(2)
+        with col3:
+            st.markdown("<div class='subtitulo'>🧠 Descomplicação de Dados Complexos</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Interface amigável para empresários<br>
+            - Informações transformadas em ações claras e aplicáveis<br>
+            - Inteligência de dados acessível sem precisar ser técnico
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col4:
+            st.markdown("<div class='subtitulo'>⚡ Agilidade na Tomada de Decisões</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Processamento rápido que responde no ritmo do seu negócio<br>
+            - Reduza o tempo entre problema e solução<br>
+            - Tome decisões urgentes com segurança e suporte confiável
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        col5, col6 = st.columns(2)
+        with col5:
+            st.markdown("<div class='subtitulo'>🌱 Sustentabilidade e Ética</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Uso ético e inteligente dos dados<br>
+            - Alinhamento com práticas empresariais sustentáveis<br>
+            - Contribuição para decisões com impacto positivo a longo prazo
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col6:
+            st.markdown("<div class='subtitulo'>💼 Para Líderes Estratégicos</div>", unsafe_allow_html=True)
+            st.markdown("""
+            <div class='descricao-gradient'>
+            - Ferramenta desenvolvida para CEOs, diretores e tomadores de decisão<br>
+            - Otimize fluxos e melhore reuniões com insights automáticos<br>
+            - Capacite sua liderança com inteligência preditiva
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Resumo final
+        st.markdown("<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='descricao-gradient'>
+        - Transforme dados brutos em <strong>inteligência acionável</strong><br>
+        - Capacite sua empresa a reagir com agilidade e precisão<br>
+        - Posicione sua marca no topo com o <strong>Oráculo Analista</strong>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Apresentar vídeo
+        st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
+        st.video(
+            "https://youtu.be/tXaVP7fG4YY")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
+
+        st.markdown("---")
+
+        st.markdown("""
+        <small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>
+        """, unsafe_allow_html=True)
+
+
     else:
         user = st.session_state.user
         st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
-        st.sidebar.image(user.profile_image_path, width=100)
+        if user.profile_image_path and os.path.exists(user.profile_image_path):
+            st.sidebar.image(user.profile_image_path, width=100)
+        else:
+            st.sidebar.image("./src/img/usuario.jpg", width=100)
         st.sidebar.write(f"Email: {user.email}")
         st.sidebar.write(f"WhatsApp: {user.whatsapp}")
-
-        if st.sidebar.button("Logout"):
-            for key in ["user", "logged_in", "codigo_confirmado", "temp_email", "name", "email", "image", "primeiro_nome", "messages"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.experimental_set_query_params()  # limpa parâmetros de URL
-            st.rerun()
-
         oraculo_analista()
 
+
 if __name__ == "__main__":
+    st.set_page_config(page_title="Oráculo Analista", page_icon="📊", layout="wide")
     main()
