@@ -12,6 +12,9 @@ from decouple import config
 import bcrypt
 from analista import oraculo_analista, configurar_usuario_logado
 
+
+st.set_page_config(page_title="Oráculo Analista - Apresentação", layout="wide")
+
 # Configurações
 DATABASE_URL = config("DATABASE_URL")
 WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA")
@@ -199,3 +202,127 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Estilo personalizado para o título e conteúdo
+st.markdown("""
+    <style>
+    .titulo-principal {
+        font-size: 3rem;
+        font-weight: bold;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .subtitulo {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: white;
+    }
+    .descricao-gradient {
+        font-size: 1.1rem;
+        background: -webkit-linear-gradient(45deg, violet, white);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown("""<div class='titulo-principal'>🚀 Oráculo Analista: Transformando Dados em Decisões Estratégicas</div>""", unsafe_allow_html=True)
+
+# Imagem representativa
+st.image("./src/img/oraculo-analista.jpg", width=700)
+
+st.markdown("---")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown("<div class='subtitulo'>📈 Aumento da Competitividade</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Análises ultrarrápidas que colocam sua empresa à frente do mercado<br>
+    - Decisões estratégicas baseadas em dados concretos e confiáveis<br>
+    - Vantagem competitiva real para crescer com segurança
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown("<div class='subtitulo'>🎯 Objetivo: Análises Precisas</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Extraia inteligência de documentos complexos com facilidade<br>
+    - Compreensão de dados vitais para acelerar estratégias<br>
+    - Menos achismo, mais assertividade nas decisões
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+col3, col4 = st.columns(2)
+with col3:
+    st.markdown("<div class='subtitulo'>🧠 Descomplicação de Dados Complexos</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Interface amigável para empresários<br>
+    - Informações transformadas em ações claras e aplicáveis<br>
+    - Inteligência de dados acessível sem precisar ser técnico
+    </div>
+    """, unsafe_allow_html=True)
+
+with col4:
+    st.markdown("<div class='subtitulo'>⚡ Agilidade na Tomada de Decisões</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Processamento rápido que responde no ritmo do seu negócio<br>
+    - Reduza o tempo entre problema e solução<br>
+    - Tome decisões urgentes com segurança e suporte confiável
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+col5, col6 = st.columns(2)
+with col5:
+    st.markdown("<div class='subtitulo'>🌱 Sustentabilidade e Ética</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Uso ético e inteligente dos dados<br>
+    - Alinhamento com práticas empresariais sustentáveis<br>
+    - Contribuição para decisões com impacto positivo a longo prazo
+    </div>
+    """, unsafe_allow_html=True)
+
+with col6:
+    st.markdown("<div class='subtitulo'>💼 Para Líderes Estratégicos</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='descricao-gradient'>
+    - Ferramenta desenvolvida para CEOs, diretores e tomadores de decisão<br>
+    - Otimize fluxos e melhore reuniões com insights automáticos<br>
+    - Capacite sua liderança com inteligência preditiva
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Resumo final
+st.markdown("<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
+st.markdown("""
+<div class='descricao-gradient'>
+- Transforme dados brutos em <strong>inteligência acionável</strong><br>
+- Capacite sua empresa a reagir com agilidade e precisão<br>
+- Posicione sua marca no topo com o <strong>Oráculo Analista</strong>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Apresentar vídeo
+st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
+st.video("./src/video/oraculosia-apresentacao.mp4")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
+
+st.markdown("---")
+
+st.markdown("""
+<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>
+""", unsafe_allow_html=True)
+
