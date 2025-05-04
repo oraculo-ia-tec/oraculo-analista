@@ -140,7 +140,7 @@ st-annotated-text==4.0.2
 st-theme==1.2.3
 starlette==0.41.3
 static3==0.7.0
-streamlit==1.40.2
+streamlit==1.45.0
 streamlit-authenticator==0.4.1
 streamlit-camera-input-live==0.2.0
 streamlit-card==1.0.2
@@ -172,5 +172,6 @@ tzdata==2023.4
 urllib3==2.1.0
 validators==0.34.0
 watchdog==6.0.0
+XlsxWriter==3.2.3
 xyzservices==2024.9.0
 yarl==1.18.3
