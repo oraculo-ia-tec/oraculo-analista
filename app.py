@@ -318,7 +318,7 @@ st.markdown("---")
 
 # Apresentar vídeo
 st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
-st.video("./src/video/oraculosia-apresentacao.mp4")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
+st.video("https://youtu.be/tXaVP7fG4YY")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
 
 st.markdown("---")
 
