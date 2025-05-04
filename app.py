@@ -179,30 +179,6 @@ def interface():
         if st.button("Confirmar Código"):
             verificar_codigo(st.session_state.temp_email, codigo)
 
-# Principal
-
-def main():
-    if not st.session_state.get("logged_in"):
-        interface()
-    else:
-        user = st.session_state.user
-        st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
-        st.sidebar.image(user.profile_image_path, width=100)
-        st.sidebar.write(f"Email: {user.email}")
-        st.sidebar.write(f"WhatsApp: {user.whatsapp}")
-
-        if st.sidebar.button("Logout"):
-            for key in ["user", "logged_in", "codigo_confirmado", "temp_email", "name", "email", "image", "primeiro_nome", "messages"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.experimental_set_query_params()  # limpa parâmetros de URL
-            st.rerun()
-
-        oraculo_analista()
-
-if __name__ == "__main__":
-    main()
-
 
 # Estilo personalizado para o título e conteúdo
 st.markdown("""
@@ -326,3 +302,27 @@ st.markdown("""
 <small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>
 """, unsafe_allow_html=True)
 
+
+# Principal
+
+def main():
+    if not st.session_state.get("logged_in"):
+        interface()
+    else:
+        user = st.session_state.user
+        st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
+        st.sidebar.image(user.profile_image_path, width=100)
+        st.sidebar.write(f"Email: {user.email}")
+        st.sidebar.write(f"WhatsApp: {user.whatsapp}")
+
+        if st.sidebar.button("Logout"):
+            for key in ["user", "logged_in", "codigo_confirmado", "temp_email", "name", "email", "image", "primeiro_nome", "messages"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.experimental_set_query_params()  # limpa parâmetros de URL
+            st.rerun()
+
+        oraculo_analista()
+
+if __name__ == "__main__":
+    main()
