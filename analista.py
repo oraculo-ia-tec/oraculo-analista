@@ -23,10 +23,12 @@ icons = {
     "user": "./src/img/usuario.jpg"
 }
 
-# Função para atualizar o primeiro nome no session_state
 def atualizar_primeiro_nome():
-    if "name" in st.session_state:
-        st.session_state.primeiro_nome = st.session_state.name.split(" ")[0]
+    if "user" in st.session_state:
+        nome_completo = st.session_state.user.name.strip()
+        primeiro_nome = nome_completo.split()[0]
+        st.session_state["primeiro_nome"] = primeiro_nome
+
 
 # Atualizar session_state com caminho da imagem do perfil
 def atualizar_imagem_perfil(email):
@@ -43,7 +45,11 @@ def configurar_usuario_logado(user):
 
 
 def obter_avatar_usuario():
-    return st.session_state.get("image", icons["user"])
+    user = st.session_state.get("user")
+    if user and user.profile_image_path and os.path.exists(user.profile_image_path):
+        return user.profile_image_path
+    return "./src/img/usuario.jpg"  # imagem padrão
+
 
 # Funções de leitura originais
 def read_xlsx(file):
@@ -156,7 +162,7 @@ def oraculo_analista():
 
                 full_response = ""
                 stream = replicate.stream(
-                    "deepseek-ai/deepseek-r1",
+                    "anthropic/claude-3.7-sonnet",
                     input={"top_p": 1, "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.1}
                 )
 
