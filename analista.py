@@ -9,19 +9,23 @@ import base64
 import re
 import replicate
 from decouple import config
+import io
+from fpdf import FPDF
 
-# Configurar o token via variável de ambiente
+
+# 🔧 CONFIGURAÇÕES INICIAIS
+
 REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN')
-
-# Diretório das imagens de perfil
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
-# Dicionário de ícones
 icons = {
     "assistant": "./src/img/perfil-analista.png",
     "user": "./src/img/usuario.jpg"
 }
+
+
+# 🧠 GERENCIAMENTO DE SESSÃO E USUÁRIO
 
 def atualizar_primeiro_nome():
     if "user" in st.session_state:
@@ -29,29 +33,26 @@ def atualizar_primeiro_nome():
         primeiro_nome = nome_completo.split()[0]
         st.session_state["primeiro_nome"] = primeiro_nome
 
-
-# Atualizar session_state com caminho da imagem do perfil
 def atualizar_imagem_perfil(email):
     image_path = os.path.join(PROFILE_IMAGES_DIR, f"{email}.png")
     if os.path.exists(image_path):
         st.session_state.image = image_path
 
-# Função para configurar sessão do usuário logado
 def configurar_usuario_logado(user):
     st.session_state.name = user.name
     st.session_state.email = user.email
     st.session_state.image = user.profile_image_path
     st.session_state.primeiro_nome = user.name.split(" ")[0]
 
-
 def obter_avatar_usuario():
     user = st.session_state.get("user")
     if user and user.profile_image_path and os.path.exists(user.profile_image_path):
         return user.profile_image_path
-    return "./src/img/usuario.jpg"  # imagem padrão
+    return "./src/img/usuario.jpg"
 
 
-# Funções de leitura originais
+# 📄 LEITORES DE ARQUIVOS
+
 def read_xlsx(file):
     text = ""
     with pd.ExcelFile(file) as xls:
@@ -84,7 +85,9 @@ def read_docx(file):
 def read_txt(file):
     return file.read().decode("utf-8")
 
-# Carregar arquivos
+
+# 📤 CARREGAMENTO DE ARQUIVOS PARA ANÁLISE
+
 def carregar_arquivos():
     uploaded_files = st.sidebar.file_uploader(
         "Coloque seu arquivo aqui:",
@@ -118,11 +121,43 @@ def carregar_arquivos():
 
     return conteudos
 
-# Interface principal
+
+# 💬 INTERFACE PRINCIPAL DO CHAT ANALISTA
+
 def oraculo_analista():
     atualizar_primeiro_nome()
 
-    st.title(f"Olá, {st.session_state.get('primeiro_nome', 'Usuário')}! Bem-vindo ao Oráculo Analista!")
+    st.markdown(
+        """
+        <style>
+        .highlight-creme {
+            background: linear-gradient(90deg, #f5f5dc, gold);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }
+        .highlight-dourado {
+            background: linear-gradient(90deg, gold, #f5f5dc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"<h1 class='title'>Análise rápida e precisa com o <span class='highlight-creme'>Oráculo</span> " 
+        f"<span class='highlight-dourado'>Analista</span></h1>",
+        unsafe_allow_html=True
+    )
+
+    st.sidebar.image("./src/img/perfil-analista.png", use_column_width=True)
+
+    if st.sidebar.button("🔄 Limpar Conversa"):
+        st.session_state.messages = []
+        st.rerun()
 
     conteudos = carregar_arquivos()
 
@@ -133,7 +168,7 @@ def oraculo_analista():
         for i, conteudo in enumerate(conteudos):
             st.text_area(f"Conteúdo do Arquivo {i+1}", conteudo, height=200)
 
-    if "messages" not in st.session_state.keys():
+    if "messages" not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
             "content": f'🌟 {st.session_state.get("primeiro_nome", "Usuário")}, estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡'
@@ -176,6 +211,36 @@ def oraculo_analista():
                 st.session_state.messages.append({"role": "assistant", "content": clean_response})
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {str(e)}")
+
+        if st.session_state.get("messages"):
+            chat_text = [
+                {"role": m["role"], "content": m["content"]} for m in st.session_state["messages"]
+            ]
+
+            # TXT
+            txt_str = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in chat_text)
+            st.download_button("📥 Baixar .txt", txt_str, file_name="chat_oraculo.txt")
+
+            # EXCEL
+            df = pd.DataFrame(chat_text)
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name="Conversa")
+            st.download_button("📊 Baixar .xlsx", excel_buffer.getvalue(), file_name="chat_oraculo.xlsx")
+
+            # PDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            for m in chat_text:
+                pdf.multi_cell(0, 10, f"{m['role'].capitalize()}: {m['content']}")
+            pdf_buffer = io.BytesIO()
+            pdf.output(pdf_buffer)
+            pdf_buffer.seek(0)
+            st.download_button("📄 Baixar .pdf", pdf_buffer, file_name="chat_oraculo.pdf")
+
+
+# PONTO DE ENTRADA
 
 if __name__ == "__main__":
     oraculo_analista()
