@@ -28,6 +28,12 @@ def atualizar_primeiro_nome():
     if "name" in st.session_state:
         st.session_state.primeiro_nome = st.session_state.name.split(" ")[0]
 
+# Atualizar session_state com caminho da imagem do perfil
+def atualizar_imagem_perfil(email):
+    image_path = os.path.join(PROFILE_IMAGES_DIR, f"{email}.png")
+    if os.path.exists(image_path):
+        st.session_state.image = image_path
+
 def obter_avatar_usuario():
     return st.session_state.get("image", icons["user"])
 
