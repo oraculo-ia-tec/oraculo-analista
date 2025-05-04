@@ -222,7 +222,7 @@ def oraculo_analista():
             # 📊 Excel com estilo
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Conversa')
+                df.to_excel(writer, sheet_name='Conversa', index=False)
 
                 workbook = writer.book
                 worksheet = writer.sheets['Conversa']
