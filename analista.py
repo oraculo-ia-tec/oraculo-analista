@@ -264,7 +264,8 @@ def oraculo_analista():
                 pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
 
             pdf_buffer = io.BytesIO()
-            pdf.output(pdf_buffer, 'F')
+            pdf_content = pdf.output(dest='S').encode('latin-1')
+            pdf_buffer.write(pdf_content)
             pdf_buffer.seek(0)
 
             st.download_button(
