@@ -255,11 +255,13 @@ def oraculo_analista():
             pdf.ln(5)
             pdf.set_font("Arial", size=12)
 
+            def remover_emojis(texto):
+                return re.sub(r'[^\x00-\x7F]+', '', texto)
+
             for m in chat_text:
-                role = m['role'].capitalize()
-                content = m['content']
+                role = remover_emojis(m['role'].capitalize())
+                content = remover_emojis(m['content'])
                 pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
-                pdf.ln(2)
 
             pdf_buffer = io.BytesIO()
             pdf.output(pdf_buffer, 'F')
