@@ -34,6 +34,14 @@ def atualizar_imagem_perfil(email):
     if os.path.exists(image_path):
         st.session_state.image = image_path
 
+# Função para configurar sessão do usuário logado
+def configurar_usuario_logado(user):
+    st.session_state.name = user.name
+    st.session_state.email = user.email
+    st.session_state.image = user.profile_image_path
+    st.session_state.primeiro_nome = user.name.split(" ")[0]
+
+
 def obter_avatar_usuario():
     return st.session_state.get("image", icons["user"])
 

@@ -10,7 +10,7 @@ from PIL import Image
 from streamlit_extras.colored_header import colored_header
 from decouple import config
 import bcrypt
-from analista import oraculo_analista
+from analista import oraculo_analista, configurar_usuario_logado
 
 # Configurações
 DATABASE_URL = config("DATABASE_URL")
@@ -88,6 +88,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             "verification_code": codigo
         })
         st.session_state.temp_email = email
+        configurar_usuario_logado(novo)
         st.success("Cadastro realizado. Verifique o código enviado.")
         return True
     except Exception as e:
@@ -116,6 +117,7 @@ def verificar_codigo(email, codigo):
             st.session_state.logged_in = True
             st.session_state.codigo_confirmado = True
             st.session_state.temp_email = None
+            configurar_usuario_logado(user_fresh)
             st.rerun()
             return True
         st.error("Código incorreto.")
@@ -164,6 +166,7 @@ def interface():
             if user:
                 st.session_state.user = user
                 st.session_state.logged_in = True
+                configurar_usuario_logado(user)
                 st.rerun()
 
     # Verificação de código separada
@@ -184,6 +187,14 @@ def main():
         st.sidebar.image(user.profile_image_path, width=100)
         st.sidebar.write(f"Email: {user.email}")
         st.sidebar.write(f"WhatsApp: {user.whatsapp}")
+
+        if st.sidebar.button("Logout"):
+            for key in ["user", "logged_in", "codigo_confirmado", "temp_email", "name", "email", "image", "primeiro_nome", "messages"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.experimental_set_query_params()  # limpa parâmetros de URL
+            st.rerun()
+
         oraculo_analista()
 
 if __name__ == "__main__":

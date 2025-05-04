@@ -1,47 +1,53 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
 import string
 import random
 import requests
-from PIL import Image
-from streamlit_extras.colored_header import colored_header
-from decouple import config
 import bcrypt
+from PIL import Image
+from decouple import config
+from streamlit_extras.colored_header import colored_header
+
+from bd_oraculo_analista.models.user_analise import UserAnalise
+from bd_oraculo_analista.models.cargo import Cargo
+from bd_oraculo_analista.config.db_session import create_session
 from analista import oraculo_analista
 
-# Configurações
-DATABASE_URL = config("DATABASE_URL")
-WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA")
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Integer, BigInteger, Boolean, ForeignKey
+from bd_oraculo_analista.models.model_base import ModelBase
 
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-Base = declarative_base()
+
+# Config
+DATABASE_URL = config("DATABASE_URL", default="mysql+pymysql://root:root@127.0.0.1:3306/db_oraculo_analista")
+WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default=None)
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
-# Modelo
-class UserAnalise(Base):
-    __tablename__ = "user_analise"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    whatsapp = Column(String(20), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    profile_image_path = Column(String(500), nullable=True)
-    verification_code = Column(String(6), nullable=True)
-    is_verified = Column(Boolean, default=False)
 
-Base.metadata.create_all(engine)
+def inicializar_cargos():
+    session = create_session()
+    try:
+        nomes = ["Admin", "Cliente", "Parceiro"]
+        existentes = {c.nome for c in session.query(Cargo).all()}
+        novos = [Cargo(nome=nome) for nome in nomes if nome not in existentes]
+        if novos:
+            session.add_all(novos)
+            session.commit()
+            print("Cargos iniciais criados com sucesso.")
+    except Exception as e:
+        print(f"Erro ao criar cargos: {e}")
+        session.rollback()
+    finally:
+        session.close()
 
-# Utilitários
+# Utils
 def gerar_codigo_verificacao(tamanho=6):
     return ''.join(random.choices(string.digits, k=tamanho))
 
 def save_profile_image(image, user_email):
-    path = os.path.join(PROFILE_IMAGES_DIR, f"{user_email}.png")
+    filename = f"{user_email}_{random.randint(1000,9999)}.png"
+    path = os.path.join(PROFILE_IMAGES_DIR, filename)
     with open(path, "wb") as f:
         f.write(image.getbuffer())
     return path
@@ -58,11 +64,16 @@ def send_to_make_webhook(data):
         return False
 
 # Cadastro
-def cadastrar_usuario(name, whatsapp, email, password, profile_image):
-    session = Session()
+def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_nome):
+    session = create_session()
     try:
         if session.query(UserAnalise).filter_by(email=email).first():
             st.error("E-mail já cadastrado.")
+            return False
+
+        cargo = session.query(Cargo).filter_by(nome=cargo_nome).first()
+        if not cargo:
+            st.error("Cargo inválido.")
             return False
 
         image_path = save_profile_image(profile_image, email)
@@ -76,7 +87,8 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             password=senha_hash,
             profile_image_path=image_path,
             verification_code=codigo,
-            is_verified=False
+            is_verified=False,
+            cargo_id=cargo.id
         )
         session.add(novo)
         session.commit()
@@ -85,7 +97,8 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             "name": name,
             "whatsapp": whatsapp,
             "email": email,
-            "verification_code": codigo
+            "verification_code": codigo,
+            "cargo": cargo_nome
         })
         st.session_state.temp_email = email
         st.success("Cadastro realizado. Verifique o código enviado.")
@@ -98,21 +111,15 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
         session.close()
 
 # Verificação
-
 def verificar_codigo(email, codigo):
-    session = Session()
+    session = create_session()
     try:
         user = session.query(UserAnalise).filter_by(email=email).first()
         if user and user.verification_code == codigo:
             user.is_verified = True
             user.verification_code = None
             session.commit()
-            session.expunge(user)
-            session.close()
-
-            session2 = Session()
-            user_fresh = session2.query(UserAnalise).filter_by(email=email).first()
-            st.session_state.user = user_fresh
+            st.session_state.user = user
             st.session_state.logged_in = True
             st.session_state.codigo_confirmado = True
             st.session_state.temp_email = None
@@ -124,9 +131,8 @@ def verificar_codigo(email, codigo):
         session.close()
 
 # Login
-
 def autenticar_usuario(email, password):
-    session = Session()
+    session = create_session()
     try:
         user = session.query(UserAnalise).filter_by(email=email, is_verified=True).first()
         if user and bcrypt.checkpw(password.encode(), user.password.encode()):
@@ -137,7 +143,6 @@ def autenticar_usuario(email, password):
         session.close()
 
 # Interface
-
 def interface():
     st.sidebar.title("Oráculo Analista")
     opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
@@ -149,9 +154,15 @@ def interface():
         senha = st.sidebar.text_input("Senha", type="password")
         imagem = st.sidebar.file_uploader("Imagem de Perfil", type=["png", "jpg", "jpeg"])
 
+        session = create_session()
+        cargos = session.query(Cargo).all()
+        cargo_opcoes = [c.nome for c in cargos]
+        cargo_selecionado = st.sidebar.selectbox("Tipo de Usuário", cargo_opcoes)
+        session.close()
+
         if st.sidebar.button("Cadastrar"):
-            if all([nome, zap, email, senha, imagem]):
-                cadastrar_usuario(nome, zap, email, senha, imagem)
+            if all([nome, zap, email, senha, imagem, cargo_selecionado]):
+                cadastrar_usuario(nome, zap, email, senha, imagem, cargo_selecionado)
             else:
                 st.sidebar.error("Preencha todos os campos.")
 
@@ -174,8 +185,8 @@ def interface():
             verificar_codigo(st.session_state.temp_email, codigo)
 
 # Principal
-
 def main():
+    inicializar_cargos()
     if not st.session_state.get("logged_in"):
         interface()
     else:
@@ -188,3 +199,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
