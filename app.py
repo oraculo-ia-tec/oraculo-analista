@@ -316,6 +316,17 @@ def main():
             st.sidebar.image("./src/img/usuario.jpg", width=100)
         st.sidebar.write(f"Email: {user.email}")
         st.sidebar.write(f"WhatsApp: {user.whatsapp}")
+
+        # 🔐 Botão de logout
+        if st.sidebar.button("🔓 Sair do sistema"):
+            for key in [
+                "user", "logged_in", "codigo_confirmado", "temp_email",
+                "name", "email", "image", "primeiro_nome", "messages"
+            ]:
+                st.session_state.pop(key, None)
+            st.experimental_set_query_params()  # limpa parâmetros da URL
+            st.rerun()
+
         oraculo_analista()
 
 

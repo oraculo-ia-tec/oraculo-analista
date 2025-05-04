@@ -13,6 +13,7 @@ import io
 from fpdf import FPDF
 
 
+
 # 🔧 CONFIGURAÇÕES INICIAIS
 
 REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN')
@@ -153,7 +154,7 @@ def oraculo_analista():
         unsafe_allow_html=True
     )
 
-    st.sidebar.image("./src/img/perfil-analista.png", use_column_width=True)
+    st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
     if st.sidebar.button("🔄 Limpar Conversa"):
         st.session_state.messages = []
@@ -216,28 +217,60 @@ def oraculo_analista():
             chat_text = [
                 {"role": m["role"], "content": m["content"]} for m in st.session_state["messages"]
             ]
-
-            # TXT
-            txt_str = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in chat_text)
-            st.download_button("📥 Baixar .txt", txt_str, file_name="chat_oraculo.txt")
-
-            # EXCEL
             df = pd.DataFrame(chat_text)
+
+            # 📊 Excel com estilo
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name="Conversa")
-            st.download_button("📊 Baixar .xlsx", excel_buffer.getvalue(), file_name="chat_oraculo.xlsx")
+                df.to_excel(writer, index=False, sheet_name='Conversa')
 
-            # PDF
+                workbook = writer.book
+                worksheet = writer.sheets['Conversa']
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'text_wrap': True,
+                    'valign': 'top',
+                    'fg_color': '#D7E4BC',
+                    'border': 1
+                })
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                    worksheet.set_column(col_num, col_num, 40)
+
+            excel_buffer.seek(0)
+            st.download_button(
+                "📊 Baixar conversa em Excel",
+                data=excel_buffer,
+                file_name="chat_oraculo.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # 📄 PDF com estilo
             pdf = FPDF()
             pdf.add_page()
+            pdf.set_font("Arial", 'B', 14)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 10, "Oráculo Analista - Histórico de Conversa", ln=True, align="C")
+            pdf.ln(5)
             pdf.set_font("Arial", size=12)
+
             for m in chat_text:
-                pdf.multi_cell(0, 10, f"{m['role'].capitalize()}: {m['content']}")
+                role = m['role'].capitalize()
+                content = m['content']
+                pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
+                pdf.ln(2)
+
             pdf_buffer = io.BytesIO()
-            pdf.output(pdf_buffer)
+            pdf.output(pdf_buffer, 'F')
             pdf_buffer.seek(0)
-            st.download_button("📄 Baixar .pdf", pdf_buffer, file_name="chat_oraculo.pdf")
+
+            st.download_button(
+                "📄 Baixar conversa em PDF",
+                data=pdf_buffer,
+                file_name="chat_oraculo.pdf",
+                mime="application/pdf"
+            )
 
 
 # PONTO DE ENTRADA
