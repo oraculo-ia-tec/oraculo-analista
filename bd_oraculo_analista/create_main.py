@@ -1,5 +1,4 @@
-from config.db_session import create_tables
-
+from bd_oraculo_analista.config.db_session import create_tables
 
 
 if __name__ == '__main__':

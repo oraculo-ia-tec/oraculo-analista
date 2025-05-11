@@ -1,15 +1,15 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
 import string
 import random
 import requests
+import bcrypt
 from PIL import Image
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, BigInteger, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from streamlit_extras.colored_header import colored_header
 from decouple import config
-import bcrypt
 from analista import oraculo_analista
 
 # Configurações
@@ -23,6 +23,10 @@ PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
 # Modelo
+class Cargo(Base):
+    __tablename__ = "cargo"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    nome = Column(String(50), nullable=False, unique=True)
 class UserAnalise(Base):
     __tablename__ = "user_analise"
     id = Column(Integer, primary_key=True)
@@ -33,6 +37,7 @@ class UserAnalise(Base):
     profile_image_path = Column(String(500), nullable=True)
     verification_code = Column(String(6), nullable=True)
     is_verified = Column(Boolean, default=False)
+    cargo_id = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
 
 Base.metadata.create_all(engine)
 
@@ -58,7 +63,7 @@ def send_to_make_webhook(data):
         return False
 
 # Cadastro
-def cadastrar_usuario(name, whatsapp, email, password, profile_image):
+def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
     session = Session()
     try:
         if session.query(UserAnalise).filter_by(email=email).first():
@@ -76,7 +81,8 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             password=senha_hash,
             profile_image_path=image_path,
             verification_code=codigo,
-            is_verified=False
+            is_verified=False,
+            cargo_id=cargo_id
         )
         session.add(novo)
         session.commit()
@@ -85,9 +91,11 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
             "name": name,
             "whatsapp": whatsapp,
             "email": email,
-            "verification_code": codigo
+            "verification_code": codigo,
+            "cargo_id": cargo_id
         })
         st.session_state.temp_email = email
+        st.session_state.verificacao_pos_login = False
         st.success("Cadastro realizado. Verifique o código enviado.")
         return True
     except Exception as e:
@@ -98,7 +106,6 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image):
         session.close()
 
 # Verificação
-
 def verificar_codigo(email, codigo):
     session = Session()
     try:
@@ -124,13 +131,18 @@ def verificar_codigo(email, codigo):
         session.close()
 
 # Login
-
 def autenticar_usuario(email, password):
     session = Session()
     try:
-        user = session.query(UserAnalise).filter_by(email=email, is_verified=True).first()
-        if user and user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
-            return user
+        user = session.query(UserAnalise).filter_by(email=email).first()
+        if user:
+            if not user.is_verified:
+                st.warning("Sua conta ainda não foi verificada. Por favor, insira o código de verificação enviado para seu e-mail.")
+                st.session_state.temp_email = user.email
+                st.session_state.verificacao_pos_login = True
+                return None
+            if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
+                return user
         st.error("Credenciais inválidas ou conta não verificada.")
         return None
     finally:
@@ -139,7 +151,7 @@ def autenticar_usuario(email, password):
 # Interface
 def interface():
     if st.session_state.get("logged_in"):
-        return  # Não renderiza interface se já estiver logado
+        return
 
     st.sidebar.title("Oráculo Analista")
     opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
@@ -150,10 +162,15 @@ def interface():
         email = st.sidebar.text_input("Email")
         senha = st.sidebar.text_input("Senha", type="password")
         imagem = st.sidebar.file_uploader("Imagem de Perfil", type=["png", "jpg", "jpeg"])
+        if imagem:
+            st.sidebar.image(imagem, caption="Pré-visualização", width=150)
+
+        # Define cargo padrão (Cliente) automaticamente
+        cargo_id = 2  # ID do cargo "Cliente" no banco
 
         if st.sidebar.button("Cadastrar"):
-            if all([nome, zap, email, senha, imagem]):
-                cadastrar_usuario(nome, zap, email, senha, imagem)
+            if all([nome, zap, email, senha, imagem, cargo_id]):
+                cadastrar_usuario(nome, zap, email, senha, imagem, cargo_id)
             else:
                 st.sidebar.error("Preencha todos os campos.")
 
@@ -168,12 +185,36 @@ def interface():
                 st.session_state.logged_in = True
                 st.rerun()
 
-    # Verificação de código separada
     if "temp_email" in st.session_state and not st.session_state.get("codigo_confirmado"):
-        st.info("Digite o código de verificação enviado.")
-        codigo = st.text_input("Código de Verificação")
-        if st.button("Confirmar Código"):
-            verificar_codigo(st.session_state.temp_email, codigo)
+        with st.sidebar:
+            if st.session_state.get("verificacao_pos_login"):
+                st.warning("Sua conta ainda não foi verificada. Por favor, insira o código de verificação enviado para seu e-mail.")
+                codigo = st.text_input("Código de Verificação")
+                if st.button("Confirmar Código"):
+                    verificar_codigo(st.session_state.temp_email, codigo)
+            else:
+                st.info(f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
+                if st.button("Reenviar Código"):
+                    session = Session()
+                    user = session.query(UserAnalise).filter_by(email=st.session_state.temp_email).first()
+                    if user:
+                        user.verification_code = gerar_codigo_verificacao()
+                        session.commit()
+                        send_to_make_webhook({
+                            "name": user.name,
+                            "whatsapp": user.whatsapp,
+                            "email": user.email,
+                            "verification_code": user.verification_code,
+                            "cargo_id": user.cargo_id
+                        })
+                        st.success("Código reenviado com sucesso!")
+                    session.close()
+                codigo = st.text_input("Código de Verificação")
+                if st.button("Confirmar Código"):
+                    verificar_codigo(st.session_state.temp_email, codigo)
+
+
+
 
 # Principal
 
@@ -297,8 +338,10 @@ def main():
 
         # Apresentar vídeo
         st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
-        st.video(
-            "https://youtu.be/tXaVP7fG4YY")  # Substitua com o link real do vídeo  # Substitua com o link real do vídeo
+        VIDEO_PATH = "src/video/oraculo-analista.mp4"
+        if os.path.exists(VIDEO_PATH):
+            with open(VIDEO_PATH, "rb") as video_file:
+                st.sidebar.video(video_file.read())
 
         st.markdown("---")
 

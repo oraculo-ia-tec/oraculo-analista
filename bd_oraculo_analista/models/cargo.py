@@ -2,6 +2,7 @@ from sqlalchemy import String, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
 from bd_oraculo_analista.models.model_base import ModelBase
 
+
 class Cargo(ModelBase):
     __tablename__ = "cargo"
 

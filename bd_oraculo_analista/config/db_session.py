@@ -45,7 +45,7 @@ def create_tables() -> None:
         create_engine()
 
     try:
-        import models.__all_models  # Garante que todas as classes sejam registradas
+        import bd_oraculo_analista.models.__all_models  # Garante que todas as classes sejam registradas
 
         print("🔄 Criando as tabelas no banco de dados...")
         ModelBase.metadata.create_all(__engine)
