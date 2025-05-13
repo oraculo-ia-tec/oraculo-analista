@@ -12,8 +12,6 @@ from decouple import config
 import io
 from fpdf import FPDF
 
-
-
 # 🔧 CONFIGURAÇÕES INICIAIS
 
 REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN')
@@ -34,16 +32,19 @@ def atualizar_primeiro_nome():
         primeiro_nome = nome_completo.split()[0]
         st.session_state["primeiro_nome"] = primeiro_nome
 
+
 def atualizar_imagem_perfil(email):
     image_path = os.path.join(PROFILE_IMAGES_DIR, f"{email}.png")
     if os.path.exists(image_path):
         st.session_state.image = image_path
+
 
 def configurar_usuario_logado(user):
     st.session_state.name = user.name
     st.session_state.email = user.email
     st.session_state.image = user.profile_image_path
     st.session_state.primeiro_nome = user.name.split(" ")[0]
+
 
 def obter_avatar_usuario():
     user = st.session_state.get("user")
@@ -62,6 +63,7 @@ def read_xlsx(file):
             text += f'--- Aba: {sheet_name} ---\n{df.to_string()}\n\n'
     return text
 
+
 def read_pdf(file):
     text = ""
     pdf_reader = PdfReader(file)
@@ -69,19 +71,24 @@ def read_pdf(file):
         text += page.extract_text()
     return text
 
+
 def read_json(file):
     return json.dumps(json.load(file), indent=4)
+
 
 def read_xml(file):
     tree = ET.parse(file)
     return ET.tostring(tree.getroot(), encoding='utf-8').decode('utf-8')
 
+
 def read_html(file):
     return file.read().decode("utf-8")
+
 
 def read_docx(file):
     doc = Document(file)
     return '\n'.join(paragraph.text for paragraph in doc.paragraphs)
+
 
 def read_txt(file):
     return file.read().decode("utf-8")
@@ -101,7 +108,8 @@ def carregar_arquivos():
         for file in uploaded_files:
             st.write(f"**Arquivo carregado:** {file.name}")
 
-            if file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]:
+            if file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             "application/vnd.ms-excel"]:
                 conteudo = read_xlsx(file)
             elif file.type == "application/pdf":
                 conteudo = read_pdf(file)
@@ -109,7 +117,8 @@ def carregar_arquivos():
                 conteudo = read_json(file)
             elif file.type in ["application/xml", "text/xml"]:
                 conteudo = read_xml(file)
-            elif file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
+            elif file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                               "application/msword"]:
                 conteudo = read_docx(file)
             elif file.type == "text/plain":
                 conteudo = read_txt(file)
@@ -149,7 +158,7 @@ def oraculo_analista():
     )
 
     st.markdown(
-        f"<h1 class='title'>Análise rápida e precisa com o <span class='highlight-creme'>Oráculo</span> " 
+        f"<h1 class='title'>Análise rápida e precisa com o <span class='highlight-creme'>Oráculo</span> "
         f"<span class='highlight-dourado'>Analista</span></h1>",
         unsafe_allow_html=True
     )
@@ -167,7 +176,7 @@ def oraculo_analista():
         full_content = "\n".join(conteudos)
         st.session_state.full_content = full_content
         for i, conteudo in enumerate(conteudos):
-            st.text_area(f"Conteúdo do Arquivo {i+1}", conteudo, height=200)
+            st.text_area(f"Conteúdo do Arquivo {i + 1}", conteudo, height=200)
 
     if "messages" not in st.session_state:
         st.session_state.messages = [{
@@ -190,9 +199,24 @@ def oraculo_analista():
         with st.chat_message("assistant", avatar=icons["assistant"]):
             try:
                 system_prompt = f"""
-                Você é o Oráculo Analista, especializado em responder perguntas sobre documentos carregados.
+                Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
+                Sua missão é dá respostas precisas e exatas sobre documentos carregados.             
                 Conteúdo dos documentos carregados:
-                {st.session_state.get('full_content', '')}
+                {st.session_state.get('full_content', '')}.
+
+                Fornecer informações precisas:
+                    "Análise do arquivo {st.session_state.get('full_content', '')}: forneça uma visão geral do conteúdo e estrutura do arquivo."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e extraia as principais informações sobre [tópico_específico]."
+                    "Faça uma análise detalhada do arquivo {st.session_state.get('full_content', '')} e forneça uma lista de pontos-chave."
+                    Fornecer previsões sobre eventos futuros
+                    "Com base na análise do arquivo {st.session_state.get('full_content', '')}, preveja as tendências futuras para [tópico_específico]."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre o impacto de [evento_ou_decisão] nos próximos [período_de_tempo]."
+                    "Faça uma análise de risco do arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre a probabilidade de [evento_ou_resultado]."
+                    Fornecer recomendações ou decisões baseadas em regras e lógica
+                    "Com base na análise do arquivo {st.session_state.get('full_content', '')}, forneça recomendações para [problema_ou_decisão]."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma decisão baseada em regras e lógica sobre [tópico_específico]."
+                    "Faça uma análise de custo-benefício do arquivo {st.session_state.get('full_content', '')} e forneça uma recomendação sobre a melhor opção."
+
                 """
                 full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
 
