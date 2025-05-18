@@ -132,17 +132,6 @@ def carregar_arquivos():
     return conteudos
 
 
-# 🔍 DETECÇÃO DE INTENÇÃO
-
-def verificar_intencao_usuario(prompt):
-    prompt = prompt.lower()
-    if any(p in prompt for p in ["plano", "assinar", "upgrade", "mensal", "trimestral", "anual", "contratar", "preço"]):
-        return "plano"
-    if any(p in prompt for p in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]):
-        return "reuniao"
-    return None
-
-
 # 💬 INTERFACE PRINCIPAL DO CHAT ANALISTA
 
 def oraculo_analista():
@@ -203,28 +192,32 @@ def oraculo_analista():
     if prompt := st.chat_input("Digite sua pergunta aqui:"):
         avatar_image = obter_avatar_usuario()
 
-        intencao = verificar_intencao_usuario(prompt)
-        if intencao == "plano":
-            with st.chat_message("assistant", avatar=icons["assistant"]):
-                st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
-                with st.expander("Planos disponíveis", expanded=True):
-                    st.markdown("### 💼 Planos Oráculo Analista")
-                    st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
-                    st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
-                    st.button("Assinar agora")
-        elif intencao == "reuniao":
-            with st.chat_message("assistant", avatar=icons["assistant"]):
-                st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
-                with st.expander("Agendamento de Reunião", expanded=True):
-                    st.markdown("### 📅 Agende uma reunião com o Oráculo Analista")
-                    nome = st.text_input("Nome completo")
-                    empresa = st.text_input("Empresa (opcional)")
-                    whatsapp = st.text_input("WhatsApp")
-                    email = st.text_input("E-mail")
-                    data = st.date_input("Data")
-                    hora = st.time_input("Horário")
-                if st.button("Confirmar Agendamento"):
-                    st.success("✅ Agendamento enviado com sucesso!")
+        if prompt := st.chat_input("Digite sua pergunta aqui:"):
+            avatar_image = obter_avatar_usuario()
+
+            intencao = verificar_intencao_usuario(prompt)
+            if intencao == "plano":
+                with st.chat_message("assistant", avatar=icons["assistant"]):
+                    st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
+                    with st.expander("Planos disponíveis", expanded=True):
+                        st.markdown("### 💼 Planos Oráculo Analista")
+                        st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
+                        st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
+                        st.button("Assinar agora")
+
+            elif intencao == "reuniao":
+                with st.chat_message("assistant", avatar=icons["assistant"]):
+                    st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
+                    with st.expander("Agendamento de Reunião", expanded=True):
+                        st.markdown("### 📅 Agende uma reunião com o Oráculo Analista")
+                        nome = st.text_input("Nome completo")
+                        empresa = st.text_input("Empresa (opcional)")
+                        whatsapp = st.text_input("WhatsApp")
+                        email = st.text_input("E-mail")
+                        data = st.date_input("Data")
+                        hora = st.time_input("Horário")
+                    if st.button("Confirmar Agendamento"):
+                        st.success("✅ Agendamento enviado com sucesso!")
 
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=avatar_image):
@@ -237,6 +230,20 @@ def oraculo_analista():
                 Sua missão é dá respostas precisas e exatas sobre documentos carregados.             
                 Conteúdo dos documentos carregados:
                 {st.session_state.get('full_content', '')}.
+
+                Fornecer informações precisas:
+                    "Análise do arquivo {st.session_state.get('full_content', '')}: forneça uma visão geral do conteúdo e estrutura do arquivo."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e extraia as principais informações sobre [tópico_específico]."
+                    "Faça uma análise detalhada do arquivo {st.session_state.get('full_content', '')} e forneça uma lista de pontos-chave."
+                    Fornecer previsões sobre eventos futuros
+                    "Com base na análise do arquivo {st.session_state.get('full_content', '')}, preveja as tendências futuras para [tópico_específico]."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre o impacto de [evento_ou_decisão] nos próximos [período_de_tempo]."
+                    "Faça uma análise de risco do arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre a probabilidade de [evento_ou_resultado]."
+                    Fornecer recomendações ou decisões baseadas em regras e lógica
+                    "Com base na análise do arquivo {st.session_state.get('full_content', '')}, forneça recomendações para [problema_ou_decisão]."
+                    "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma decisão baseada em regras e lógica sobre [tópico_específico]."
+                    "Faça uma análise de custo-benefício do arquivo {st.session_state.get('full_content', '')} e forneça uma recomendação sobre a melhor opção."
+
                 """
                 full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
 
@@ -263,6 +270,7 @@ def oraculo_analista():
             ]
             df = pd.DataFrame(chat_text)
 
+            # 📊 Excel com estilo
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 df.to_excel(writer, sheet_name='Conversa', index=False)
@@ -288,6 +296,7 @@ def oraculo_analista():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
+            # 📄 PDF com estilo
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14)
