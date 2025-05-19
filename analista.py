@@ -212,6 +212,7 @@ def oraculo_analista():
                 st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
                 st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
                 st.button("Assinar agora")
+
         elif intencao == "reuniao":
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
@@ -233,11 +234,25 @@ def oraculo_analista():
         with st.chat_message("assistant", avatar=icons["assistant"]):
             try:
                 system_prompt = f"""
-                Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
-                Sua missão é dá respostas precisas e exatas sobre documentos carregados.             
-                Conteúdo dos documentos carregados:
-                {st.session_state.get('full_content', '')}.
-                """
+                    Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
+                    Sua missão é dá respostas precisas e exatas sobre documentos carregados.             
+                    Conteúdo dos documentos carregados:
+                    {st.session_state.get('full_content', '')}.
+
+                    Fornecer informações precisas:
+                        "Análise do arquivo {st.session_state.get('full_content', '')}: forneça uma visão geral do conteúdo e estrutura do arquivo."
+                        "Leia o arquivo {st.session_state.get('full_content', '')} e extraia as principais informações sobre [tópico_específico]."
+                        "Faça uma análise detalhada do arquivo {st.session_state.get('full_content', '')} e forneça uma lista de pontos-chave."
+                        Fornecer previsões sobre eventos futuros
+                        "Com base na análise do arquivo {st.session_state.get('full_content', '')}, preveja as tendências futuras para [tópico_específico]."
+                        "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre o impacto de [evento_ou_decisão] nos próximos [período_de_tempo]."
+                        "Faça uma análise de risco do arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre a probabilidade de [evento_ou_resultado]."
+                        Fornecer recomendações ou decisões baseadas em regras e lógica
+                        "Com base na análise do arquivo {st.session_state.get('full_content', '')}, forneça recomendações para [problema_ou_decisão]."
+                        "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma decisão baseada em regras e lógica sobre [tópico_específico]."
+                        "Faça uma análise de custo-benefício do arquivo {st.session_state.get('full_content', '')} e forneça uma recomendação sobre a melhor opção."
+
+                        """
                 full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
 
                 full_response = ""
