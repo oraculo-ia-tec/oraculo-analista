@@ -209,23 +209,48 @@ def oraculo_analista():
                 st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
                 with st.expander("Planos disponíveis", expanded=True):
                     st.markdown("### 💼 Planos Oráculo Analista")
-                st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
-                st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
-                st.button("Assinar agora")
-
+                    st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
+                    st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
+                    st.button("Assinar agora")
         elif intencao == "reuniao":
+
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
+                st.markdown(
+                    "Assim que você finalizar o cadastro de agendamento você receberá uma confirmação em seu e-mail.")
                 with st.expander("Agendamento de Reunião", expanded=True):
                     st.markdown("### 📅 Agende uma reunião com o Oráculo Analista")
-                nome = st.text_input("Nome completo")
-                empresa = st.text_input("Empresa (opcional)")
-                whatsapp = st.text_input("WhatsApp")
-                email = st.text_input("E-mail")
-                data = st.date_input("Data")
-                hora = st.time_input("Horário")
+                    nome = st.text_input("Nome completo")
+                    empresa = st.text_input("Empresa (opcional)")
+                    whatsapp = st.text_input("WhatsApp")
+                    email = st.text_input("E-mail")
+                    data = st.date_input("Data")
+                    hora = st.time_input("Horário")
                 if st.button("Confirmar Agendamento"):
-                    st.success("✅ Agendamento enviado com sucesso!")
+                    import requests
+                    from decouple import config
+
+                    WEBHOOK_AGENDA_ANALISTA = config('WEBHOOK_AGENDA_ANALISTA')
+
+                    dados_agenda = {
+                        "nome": nome,
+                        "empresa": empresa,
+                        "whatsapp": whatsapp,
+                        "email": email,
+                        "data": str(data),
+                        "hora": str(hora)
+                    }
+
+                    try:
+                        resposta = requests.post(WEBHOOK_AGENDA_ANALISTA, json=dados_agenda)
+                        if resposta.status_code == 200:
+                            st.success("✅ Pedido de agendamento feito com sucesso!")
+                            st.balloons
+                            st.info('Enviei um confirmaçao de agendamento e seu e-mail.')
+                        else:
+                            st.error("❌ Erro ao enviar agendamento para o Oráculo Analista.")
+                    except Exception as e:
+                        st.error(f"Erro ao enviar para Webhook: {e}")
 
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=avatar_image):
@@ -235,7 +260,8 @@ def oraculo_analista():
             try:
                 system_prompt = f"""
                     Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
-                    Sua missão é dá respostas precisas e exatas sobre documentos carregados.             
+                    Sua missão é dá respostas precisas e exatas sobre documentos carregados, com no máximo 256 
+                    caracteres por resposta — ou até 300 caracteres se necessário para completude.             
                     Conteúdo dos documentos carregados:
                     {st.session_state.get('full_content', '')}.
 
