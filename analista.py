@@ -146,6 +146,7 @@ def verificar_intencao_usuario(prompt):
 # 💬 INTERFACE PRINCIPAL DO CHAT ANALISTA
 
 def oraculo_analista():
+
     atualizar_primeiro_nome()
 
     st.markdown(
@@ -207,18 +208,49 @@ def oraculo_analista():
         if intencao == "plano":
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
-                with st.expander("Planos disponíveis", expanded=True):
+                # Popover para escolher o plano
+                with st.popover("ESCOLHA SEU PLANO"):
                     st.markdown("### 💼 Planos Oráculo Analista")
                     st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
-                    st.markdown("- **Mensal**: R$ 49,90\n- **Trimestral**: R$ 129,90\n- **Anual**: R$ 449,00")
-                    st.button("Assinar agora")
+
+                    # Criando duas colunas
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        # Apresentar os planos
+                        plano = st.radio("Selecione um plano:",
+                                         ["Mensal - R$ 49,90", "Trimestral - R$ 119,90", "Anual - R$ 369,90"])
+
+                    with col2:
+                        # Breve descrição de cada plano
+                        if plano == "Mensal - R$ 49,90":
+                            st.write("Ideal para quem deseja experimentar nossos serviços por um curto período.")
+                        elif plano == "Trimestral - R$ 119,90":
+                            st.write("Economize em relação ao plano mensal e tenha mais tempo para aproveitar.")
+                        elif plano == "Anual - R$ 369,90":
+                            st.write(
+                                "A melhor opção para quem deseja um compromisso a longo prazo com descontos significativos.")
+
+                    if st.button("Assinar agora"):
+                        if plano == "Mensal - R$ 49,90":
+                            st.write("Você será redirecionado para o link de simulação do plano mensal.")
+                            st.markdown(
+                                "[Clique aqui para assinatura mensal](https://sandbox.asaas.com/c/qmo94xid8f1i6tnc)")
+                        elif plano == "Trimestral - R$ 119,90":
+                            st.write("Você será redirecionado para o link de simulação do plano trimestral.")
+                            st.markdown(
+                                "[Clique aqui para assinatura trimestral](https://sandbox.asaas.com/c/jsmak76vdo5fke23)")
+                        elif plano == "Anual - R$ 369,90":
+                            st.write("Você será redirecionado para o link de simulação do plano anual.")
+                            st.markdown(
+                                "[Clique aqui para assinatura anual](https://sandbox.asaas.com/c/adu6nd24lf8jauo3)")
         elif intencao == "reuniao":
 
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
                 st.markdown(
                     "Assim que você finalizar o cadastro de agendamento você receberá uma confirmação em seu e-mail.")
-                with st.expander("Agendamento de Reunião", expanded=True):
+                with st.popover("Agendamento"):
                     st.markdown("### 📅 Agende uma reunião com o Oráculo Analista")
                     nome = st.text_input("Nome completo")
                     empresa = st.text_input("Empresa (opcional)")
@@ -226,6 +258,14 @@ def oraculo_analista():
                     email = st.text_input("E-mail")
                     data = st.date_input("Data")
                     hora = st.time_input("Horário")
+
+                    if st.button("Cadastrar"):
+                        st.write("Nome:", nome)
+                        st.write("Empresa:", empresa)
+                        st.write("WhatsApp:", whatsapp)
+                        st.write("E-mail:", email)
+                        st.write("Data:", data)
+                        st.write("Horário:", hora)
                 if st.button("Confirmar Agendamento"):
                     import requests
                     from decouple import config
