@@ -11,6 +11,7 @@ import replicate
 from decouple import config
 import io
 from fpdf import FPDF
+import time
 
 # 🔧 CONFIGURAÇÕES INICIAIS
 
@@ -201,104 +202,100 @@ def oraculo_analista():
         with st.chat_message(message["role"], avatar=avatar_image):
             st.write(message["content"])
 
+    # Seção 1 - Entrada do usuário
     if prompt := st.chat_input("Digite sua pergunta aqui:", key="chat_input_analista"):
         avatar_image = obter_avatar_usuario()
-
         intencao = verificar_intencao_usuario(prompt)
-        if intencao == "plano":
-            with st.chat_message("assistant", avatar=icons["assistant"]):
-                st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
-                # Popover para escolher o plano
-                with st.popover("ESCOLHA SEU PLANO"):
-                    st.markdown("### 💼 Planos Oráculo Analista")
-                    st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
 
-                    # Criando duas colunas
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        # Apresentar os planos
-                        plano = st.radio("Selecione um plano:",
-                                         ["Mensal - R$ 49,90", "Trimestral - R$ 119,90", "Anual - R$ 369,90"])
-
-                    with col2:
-                        # Breve descrição de cada plano
-                        if plano == "Mensal - R$ 49,90":
-                            st.write("Ideal para quem deseja experimentar nossos serviços por um curto período.")
-                        elif plano == "Trimestral - R$ 119,90":
-                            st.write("Economize em relação ao plano mensal e tenha mais tempo para aproveitar.")
-                        elif plano == "Anual - R$ 369,90":
-                            st.write(
-                                "A melhor opção para quem deseja um compromisso a longo prazo com descontos significativos.")
-
-                    if st.button("Assinar agora"):
-                        if plano == "Mensal - R$ 49,90":
-                            st.write("Você será redirecionado para o link de simulação do plano mensal.")
-                            st.markdown(
-                                "[Clique aqui para assinatura mensal](https://sandbox.asaas.com/c/qmo94xid8f1i6tnc)")
-                        elif plano == "Trimestral - R$ 119,90":
-                            st.write("Você será redirecionado para o link de simulação do plano trimestral.")
-                            st.markdown(
-                                "[Clique aqui para assinatura trimestral](https://sandbox.asaas.com/c/jsmak76vdo5fke23)")
-                        elif plano == "Anual - R$ 369,90":
-                            st.write("Você será redirecionado para o link de simulação do plano anual.")
-                            st.markdown(
-                                "[Clique aqui para assinatura anual](https://sandbox.asaas.com/c/adu6nd24lf8jauo3)")
-        elif intencao == "reuniao":
-
-            with st.chat_message("assistant", avatar=icons["assistant"]):
-                st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
-                st.markdown(
-                    "Assim que você finalizar o cadastro de agendamento você receberá uma confirmação em seu e-mail.")
-                with st.popover("Agendamento"):
-                    st.markdown("### 📅 Agende uma reunião com o Oráculo Analista")
-                    nome = st.text_input("Nome completo")
-                    empresa = st.text_input("Empresa (opcional)")
-                    whatsapp = st.text_input("WhatsApp")
-                    email = st.text_input("E-mail")
-                    data = st.date_input("Data")
-                    hora = st.time_input("Horário")
-
-                    if st.button("Cadastrar"):
-                        st.write("Nome:", nome)
-                        st.write("Empresa:", empresa)
-                        st.write("WhatsApp:", whatsapp)
-                        st.write("E-mail:", email)
-                        st.write("Data:", data)
-                        st.write("Horário:", hora)
-                if st.button("Confirmar Agendamento"):
-                    import requests
-                    from decouple import config
-
-                    WEBHOOK_AGENDA_ANALISTA = config('WEBHOOK_AGENDA_ANALISTA')
-
-                    dados_agenda = {
-                        "nome": nome,
-                        "empresa": empresa,
-                        "whatsapp": whatsapp,
-                        "email": email,
-                        "data": str(data),
-                        "hora": str(hora)
-                    }
-
-                    try:
-                        resposta = requests.post(WEBHOOK_AGENDA_ANALISTA, json=dados_agenda)
-                        if resposta.status_code == 200:
-                            st.success("✅ Pedido de agendamento feito com sucesso!")
-                            st.balloons
-                            st.info('Enviei um confirmaçao de agendamento e seu e-mail.')
-                        else:
-                            st.error("❌ Erro ao enviar agendamento para o Oráculo Analista.")
-                    except Exception as e:
-                        st.error(f"Erro ao enviar para Webhook: {e}")
-
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Mostra a mensagem do usuário primeiro (para respeitar ordem de exibição no chat)
         with st.chat_message("user", avatar=avatar_image):
             st.write(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-        with st.chat_message("assistant", avatar=icons["assistant"]):
-            try:
-                system_prompt = f"""
+        if intencao in ["plano", "reuniao"]:
+            time.sleep(3)  # Delay para humanização
+
+            # Seção 2 - Escolha de plano
+            if intencao == "plano":
+                with st.chat_message("assistant", avatar=icons["assistant"]):
+                    st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
+
+                    with st.form("form_planos", clear_on_submit=True):
+                        st.markdown("### 💼 Planos Oráculo Analista")
+                        st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
+
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            plano = st.selectbox("Selecione um plano:",
+                                                 ["Mensal - R$ 49,90", "Trimestral - R$ 119,90", "Anual - R$ 369,90"],
+                                                 key="plano_escolhido")
+
+                        with col2:
+                            if plano == "Mensal - R$ 49,90":
+                                st.write("Ideal para quem deseja experimentar nossos serviços por um curto período.")
+                                st.link_button("Assinar Mensal", "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc")
+                            elif plano == "Trimestral - R$ 119,90":
+                                st.write("Economize em relação ao plano mensal e tenha mais tempo para aproveitar.")
+                                st.link_button("Assinar Trimestral", "https://sandbox.asaas.com/c/jsmak76vdo5fke23")
+                            elif plano == "Anual - R$ 369,90":
+                                st.write(
+                                    "A melhor opção para quem deseja um compromisso a longo prazo com descontos significativos.")
+                                st.link_button("Assinar Anual", "https://sandbox.asaas.com/c/adu6nd24lf8jauo3")
+
+                        assinar = st.form_submit_button("Confirmar plano")
+
+                    if assinar:
+                        st.success(
+                            "✅ Plano selecionado com sucesso! Você será redirecionado para concluir sua assinatura.")
+                        st.balloons()
+
+            # Seção 3 - Agendamento
+            if intencao == "reuniao":
+                with st.chat_message("assistant", avatar=icons["assistant"]):
+                    st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
+                    st.markdown(
+                        "Assim que você finalizar o cadastro de agendamento você receberá uma confirmação em seu e-mail.")
+
+                    with st.form("form_agendamento", clear_on_submit=True):
+                        nome = st.text_input("Nome completo", key="nome_agendamento")
+                        empresa = st.text_input("Empresa (opcional)", key="empresa_agendamento")
+                        whatsapp = st.text_input("WhatsApp", key="whatsapp_agendamento")
+                        email = st.text_input("E-mail", key="email_agendamento")
+                        data = st.date_input("Data", key="data_agendamento")
+                        hora = st.time_input("Horário", key="hora_agendamento")
+
+                        agendar = st.form_submit_button("Agendar")
+
+                    if agendar:
+                        from decouple import config
+                        WEBHOOK_AGENDA_ANALISTA = config('WEBHOOK_AGENDA_ANALISTA')
+
+                        dados_agenda = {
+                            "nome": nome,
+                            "empresa": empresa,
+                            "whatsapp": whatsapp,
+                            "email": email,
+                            "data": str(data),
+                            "hora": str(hora)
+                        }
+
+                        try:
+                            resposta = requests.post(WEBHOOK_AGENDA_ANALISTA, json=dados_agenda)
+                            if resposta.status_code == 200:
+                                st.success(f"✅ Obrigado {nome}, seu agendamento foi realizado com sucesso!")
+                                st.info("Você receberá um e-mail com a confirmação do seu agendamento.")
+                                st.balloons()
+                            else:
+                                st.error("❌ Erro ao enviar agendamento para o Oráculo Analista.")
+                        except Exception as e:
+                            st.error(f"Erro ao enviar para Webhook: {e}")
+
+
+        # Seção 4 - Resposta do assistente (modelo LLM)
+        elif intencao not in ["plano", "reuniao"]:
+            with st.chat_message("assistant", avatar=icons["assistant"]):
+                try:
+                    system_prompt = f"""
                     Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
                     Sua missão é dá respostas precisas e exatas sobre documentos carregados, com no máximo 256 
                     caracteres por resposta — ou até 300 caracteres se necessário para completude.             
@@ -317,26 +314,24 @@ def oraculo_analista():
                         "Com base na análise do arquivo {st.session_state.get('full_content', '')}, forneça recomendações para [problema_ou_decisão]."
                         "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma decisão baseada em regras e lógica sobre [tópico_específico]."
                         "Faça uma análise de custo-benefício do arquivo {st.session_state.get('full_content', '')} e forneça uma recomendação sobre a melhor opção."
+                    """
+                    full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
+                    full_response = ""
+                    stream = replicate.stream(
+                        "anthropic/claude-3.7-sonnet",
+                        input={"top_p": 1, "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.1}
+                    )
 
-                        """
-                full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
+                    with st.spinner("Gerando análise..."):
+                        response_container = st.empty()
+                        for event in stream:
+                            full_response += str(event)
+                            clean_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
+                            response_container.markdown(clean_response)
 
-                full_response = ""
-                stream = replicate.stream(
-                    "anthropic/claude-3.7-sonnet",
-                    input={"top_p": 1, "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.1}
-                )
-
-                with st.spinner("Gerando análise..."):
-                    response_container = st.empty()
-                    for event in stream:
-                        full_response += str(event)
-                        clean_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
-                        response_container.markdown(clean_response)
-
-                st.session_state.messages.append({"role": "assistant", "content": clean_response})
-            except Exception as e:
-                st.error(f"Erro ao gerar análise: {str(e)}")
+                    st.session_state.messages.append({"role": "assistant", "content": clean_response})
+                except Exception as e:
+                    st.error(f"Erro ao gerar análise: {str(e)}")
 
         if st.session_state.get("messages"):
             chat_text = [

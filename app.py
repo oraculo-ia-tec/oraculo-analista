@@ -205,6 +205,9 @@ def autenticar_usuario(email, password):
     finally:
         session.close()
 
+
+
+
 # Interface
 def interface():
     if st.session_state.get("logged_in"):
@@ -270,6 +273,29 @@ def interface():
                 if st.button("Confirmar Código"):
                     verificar_codigo(st.session_state.temp_email, codigo)
 
+    # Verificação de pagamento (login especial recorrente)
+    if "verificar_pagamento" not in st.session_state:
+        st.session_state.verificar_pagamento = False
+
+    if st.session_state.verificar_pagamento:
+        st.markdown("### 🔒 Verificação de Pagamento do Plano")
+        email_verificacao = st.text_input("Digite seu e-mail de cadastro:", key="email_verif")
+        if st.button("Verificar Status de Pagamento"):
+            try:
+                import requests
+                response = requests.get("http://localhost:8000/verificar-pagamento",
+                                        params={"email": email_verificacao})
+                if response.status_code == 200:
+                    dados = response.json()
+                    if dados["status"] == "confirmado":
+                        st.success("✅ Pagamento confirmado! Código de verificação: ")
+                        st.code(dados["codigo_verificacao"])
+                    else:
+                        st.warning(dados["mensagem"])
+                else:
+                    st.error("❌ Não foi possível verificar o pagamento.")
+            except Exception as e:
+                st.error(f"Erro ao conectar com a API: {e}")
 
 # Principal
 
