@@ -1,30 +1,31 @@
-# api_asaas.py - FastAPI API
-
-import requests
+from fastapi import FastAPI, Request, HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from decouple import config
-import logging
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timedelta, date
+from pagamentos import Base, UserAnalise
 from pydantic import BaseModel
-from datetime import date, timedelta
+import requests
+import logging
 
 app = FastAPI()
 
-# Configurar logs
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("asaas_api")
+# Configuração do banco de dados
+DATABASE_URL = config("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
 
-# Chave da API do ASAAS
+# Configuração da API ASAAS
 ASAAS_API_KEY = config("ASAAS_API_KEY")
-if not ASAAS_API_KEY:
-    raise ValueError("A variável de ambiente ASAAS_API_KEY não está definida. Verifique o arquivo .env.")
-
-logger.info("Chave da API ASAAS carregada com sucesso.")
-
-ASAAS_API_URL = "https://www.asaas.com/api/v3"
+BASE_URL_ASAAS = config("BASE_URL_ASAAS")
 HEADERS = {
     "Content-Type": "application/json",
     "access_token": ASAAS_API_KEY
 }
+
+# Logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("asaas_api")
 
 # Pydantic Schemas
 class ClienteRequest(BaseModel):
@@ -41,7 +42,53 @@ class CobrancaRequest(BaseModel):
 class VerificacaoRequest(BaseModel):
     payment_id: str
 
-# Rotas FastAPI
+# Webhook de notificação automática de pagamento
+@app.post("/webhook-pagamento")
+async def receber_webhook_pagamento(request: Request):
+    payload = await request.json()
+
+    payment_id = payload.get("id")
+    status = payload.get("status")
+    customer = payload.get("customer")
+
+    if not all([payment_id, status, customer]):
+        raise HTTPException(status_code=400, detail="Campos obrigatórios ausentes no payload")
+
+    try:
+        cliente_resp = requests.get(f"{BASE_URL_ASAAS}/customers/{customer}", headers=HEADERS)
+        if cliente_resp.status_code != 200:
+            raise HTTPException(status_code=cliente_resp.status_code, detail="Erro ao buscar cliente no Asaas")
+
+        email_cliente = cliente_resp.json().get("email")
+        if not email_cliente:
+            raise HTTPException(status_code=404, detail="E-mail do cliente não localizado no Asaas")
+
+        if status == "RECEIVED":
+            session = Session()
+            usuario = session.query(UserAnalise).filter_by(email=email_cliente).first()
+
+            if usuario:
+                usuario.pagamento_confirmado = True
+                usuario.acesso_autorizado = True
+                usuario.plano = usuario.upgrade_solicitado
+
+                dias = 30 if usuario.plano == "mensal" else 90 if usuario.plano == "trimestral" else 365
+                usuario.data_vencimento = datetime.now().date() + timedelta(days=dias)
+                usuario.upgrade_solicitado = None
+
+                session.commit()
+                session.close()
+                return {"status": "atualizado", "cliente": usuario.email, "pagamento": "confirmado"}
+            else:
+                session.close()
+                raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+        return {"status": "ignorado", "motivo": f"Status '{status}' não requer atualização"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno no webhook: {str(e)}")
+
+# Rotas auxiliares
 @app.post("/criar-cliente")
 def criar_cliente_api(req: ClienteRequest):
     payload = {
@@ -50,7 +97,7 @@ def criar_cliente_api(req: ClienteRequest):
         "mobilePhone": req.telefone
     }
     logger.info(f"Criando cliente: {payload}")
-    response = requests.post(f"{ASAAS_API_URL}/customers", json=payload, headers=HEADERS)
+    response = requests.post(f"{BASE_URL_ASAAS}/customers", json=payload, headers=HEADERS)
     logger.info(f"Resposta ASAAS - criar_cliente: {response.status_code} - {response.text}")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -66,7 +113,7 @@ def criar_cobranca_api(req: CobrancaRequest):
         "description": req.descricao
     }
     logger.info(f"Criando cobrança: {payload}")
-    response = requests.post(f"{ASAAS_API_URL}/payments", json=payload, headers=HEADERS)
+    response = requests.post(f"{BASE_URL_ASAAS}/payments", json=payload, headers=HEADERS)
     logger.info(f"Resposta ASAAS - criar_cobranca: {response.status_code} - {response.text}")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -75,7 +122,7 @@ def criar_cobranca_api(req: CobrancaRequest):
 @app.post("/verificar-pagamento")
 def verificar_pagamento_api(req: VerificacaoRequest):
     logger.info(f"Verificando pagamento ID: {req.payment_id}")
-    response = requests.get(f"{ASAAS_API_URL}/payments/{req.payment_id}", headers=HEADERS)
+    response = requests.get(f"{BASE_URL_ASAAS}/payments/{req.payment_id}", headers=HEADERS)
     logger.info(f"Resposta ASAAS - verificar_pagamento: {response.status_code} - {response.text}")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -85,13 +132,12 @@ def verificar_pagamento_api(req: VerificacaoRequest):
 def listar_pagamentos(status: str = None):
     logger.info(f"Listando pagamentos com status: {status}")
     params = {"status": status} if status else {}
-    response = requests.get(f"{ASAAS_API_URL}/payments", headers=HEADERS, params=params)
+    response = requests.get(f"{BASE_URL_ASAAS}/payments", headers=HEADERS, params=params)
     logger.info(f"Resposta ASAAS - listar_pagamentos: {response.status_code} - {response.text}")
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
     return response.json()
 
-# Utilitário: gerar data de vencimento futura
 @app.get("/vencimento/{dias}")
 def gerar_vencimento(dias: int = 3):
     data_venc = (date.today() + timedelta(days=dias)).isoformat()

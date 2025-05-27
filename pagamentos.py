@@ -4,10 +4,48 @@ import requests
 from sqlalchemy import create_engine, update
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, Date
 from decouple import config
 import datetime
 from notification import Notificador, WhatsAppSimulado
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, Date
+from sqlalchemy.orm import relationship
+
+Base = declarative_base()
+# Criando as tabelas no banco
+Base.metadata.create_all(engine)
+
+
+class Cobranca(Base):
+    __tablename__ = 'cobrancas'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey('user_analista.id'), nullable=False)
+    plano_id = Column(Integer, ForeignKey('planos.id'), nullable=False)
+    valor = Column(Float, nullable=False)
+    status = Column(String(20), nullable=False)  # PENDING, PAID, CANCELLED
+    data_criacao = Column(DateTime, nullable=False)
+    due_date = Column(DateTime, nullable=False)
+    descricao = Column(Text, nullable=True)
+    payment_link = Column(String, nullable=True)
+
+    # Relacionamento com pagamento e usuário
+    pagamentos = relationship("Pagamento", back_populates="cobranca")
+    usuario = relationship("UserAnalista", back_populates="cobrancas")
+
+
+class Pagamento(Base):
+    __tablename__ = 'pagamentos'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cobranca_id = Column(Integer, ForeignKey('cobrancas.id'), nullable=False)
+    valor_pago = Column(Float, nullable=False)
+    status = Column(String(20), nullable=False)  # PENDING, PAID, REFUNDED
+    data_pago = Column(DateTime, nullable=True)
+    payment_id = Column(String, nullable=True)  # ID da API Asaas
+    descricao = Column(Text, nullable=True)
+
+    # Relacionamento com cobrança
+    cobranca = relationship("Cobranca", back_populates="pagamentos")
 
 
 st.set_page_config(page_title="Pagamentos - Oráculo Analista", layout="wide")
