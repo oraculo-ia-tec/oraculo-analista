@@ -5,26 +5,35 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import streamlit as st
+
+try:
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+except ModuleNotFoundError as e:
+    raise ModuleNotFoundError(
+        "Dependências da Gmail API não instaladas. "
+        "Adicione ao requirements.txt: "
+        "google-api-python-client, google-auth, "
+        "google-auth-oauthlib, google-auth-httplib2"
+    ) from e
 
 logging.basicConfig(level=logging.INFO)
 
 
 class Notificador:
-    """
-    Serviço de envio de e-mails usando Gmail API com OAuth2.
-
-    As credenciais são carregadas automaticamente de variáveis de ambiente.
-    """
-
     def __init__(self):
-        self.login = os.getenv("SMTP_LOGIN")
-        self.google_client_id = os.getenv("GOOGLE_CLIENT_ID")
-        self.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-        self.google_refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
-        self.google_oauth_scopes_raw = os.getenv("GOOGLE_OAUTH_SCOPES", "")
+        email_secrets = st.secrets["email"] if "email" in st.secrets else {}
+
+        self.google_client_id = email_secrets.get(
+            "GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_CLIENT_ID")
+        self.google_client_secret = email_secrets.get(
+            "GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET")
+        self.google_refresh_token = email_secrets.get(
+            "GMAIL_REFRESH_TOKEN") or os.getenv("GMAIL_REFRESH_TOKEN")
+        self.google_oauth_scopes_raw = email_secrets.get(
+            "GOOGLE_OAUTH_SCOPES") or os.getenv("GOOGLE_OAUTH_SCOPES", "")
 
         self.google_scopes = self._load_scopes()
 
@@ -70,21 +79,6 @@ class Notificador:
         return build("gmail", "v1", credentials=creds)
 
     def enviar_email(self, destino: str, assunto: str, mensagem: str) -> dict:
-        """
-        Envia e-mail HTML usando Gmail API.
-
-        Args:
-            destino: Endereço de e-mail do destinatário.
-            assunto: Assunto da mensagem.
-            mensagem: Conteúdo HTML do e-mail.
-
-        Returns:
-            dict: Resposta da Gmail API com metadados do envio.
-
-        Raises:
-            RuntimeError: Em caso de falha de configuração, autenticação
-            ou erro da Gmail API.
-        """
         try:
             service = self._build_service()
 
@@ -108,14 +102,16 @@ class Notificador:
             )
 
             logging.info(
-                f"E-mail enviado com sucesso para {destino}. ID: {response.get('id')}"
-            )
+                f"E-mail enviado com sucesso para {destino}. ID: {response.get('id')}")
             return response
 
         except HttpError as e:
-            logging.exception(f"Erro HTTP da Gmail API ao enviar para {destino}: {e}")
-            raise RuntimeError(f"Erro da Gmail API ao enviar e-mail: {e}") from e
+            logging.exception(
+                f"Erro HTTP da Gmail API ao enviar para {destino}: {e}")
+            raise RuntimeError(
+                f"Erro da Gmail API ao enviar e-mail: {e}") from e
 
         except Exception as e:
-            logging.exception(f"Erro inesperado ao enviar e-mail para {destino}: {e}")
+            logging.exception(
+                f"Erro inesperado ao enviar e-mail para {destino}: {e}")
             raise RuntimeError(f"Falha no envio de e-mail: {e}") from e
