@@ -18,7 +18,7 @@ from analista import oraculo_analista
 # Configurações
 # =========================
 config = AutoConfig()
-DATABASE_URL = config("DATABASE_URL")
+DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo.db")
 WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
 VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
 
@@ -179,7 +179,6 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.add(novo)
         session.commit()
 
-
         # Envio de e-mail direto
         try:
             notificador = Notificador(
@@ -292,7 +291,6 @@ def interface():
         if imagem:
             st.sidebar.image(imagem, caption="Pré-visualização", width=150)
 
-
         # Buscar cargos do banco
         import sqlite3
         cargos = []
@@ -305,7 +303,6 @@ def interface():
         except Exception as e:
             st.sidebar.error(f"Erro ao buscar cargos: {e}")
 
-
         cargo_opcoes = {nome: id_ for id_, nome in cargos}
         default_index = 0
         if cargos:
@@ -313,7 +310,8 @@ def interface():
                 if nome.lower() == "cliente":
                     default_index = idx
                     break
-            cargo_nome = st.sidebar.selectbox("Cargo", list(cargo_opcoes.keys()), index=default_index)
+            cargo_nome = st.sidebar.selectbox("Cargo", list(
+                cargo_opcoes.keys()), index=default_index)
             cargo_id = cargo_opcoes[cargo_nome]
         else:
             cargo_nome = None
@@ -390,10 +388,13 @@ def interface():
                                 <p>Seu novo código de verificação para o Oráculo Analista é: <strong>{user.verification_code}</strong></p>
                                 <p>Use este código para ativar sua conta.</p>
                                 """
-                                notificador.enviar_email(user.email, assunto, mensagem)
-                                st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+                                notificador.enviar_email(
+                                    user.email, assunto, mensagem)
+                                st.success(
+                                    "Código reenviado com sucesso! Verifique seu e-mail.")
                             except Exception as e:
-                                st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+                                st.error(
+                                    f"Erro ao reenviar e-mail de verificação: {e}")
                     finally:
                         session.close()
 
