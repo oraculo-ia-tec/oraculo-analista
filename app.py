@@ -179,23 +179,21 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.add(novo)
         session.commit()
 
-        # Envio de e-mail direto
-        try:
-            notificador = Notificador(
-                smtp_server="smtp.gmail.com",
-                smtp_port=587,
-                login="programador.descpro@gmail.com",
-                senha="Descpro2026"
-            )
-            assunto = "Código de Verificação - Oráculo Analista"
-            mensagem = f"""
-            <h3>Olá {name},</h3>
-            <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
-            <p>Use este código para ativar sua conta.</p>
-            """
-            notificador.enviar_email(email, assunto, mensagem)
-        except Exception as e:
-            st.error(f"Erro ao enviar e-mail de verificação: {e}")
+        notificador = Notificador(
+            smtp_server=config("SMTP_SERVER", default="smtp.gmail.com"),
+            smtp_port=int(config("SMTP_PORT", default="587")),
+            login=config("SMTP_LOGIN"),
+            senha=config("SMTP_PASSWORD"),
+        )
+
+        assunto = "Código de Verificação - Oráculo Analista"
+        mensagem = f"""
+        <h3>Olá {name},</h3>
+        <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
+        <p>Use este código para ativar sua conta.</p>
+        """
+
+        notificador.enviar_email(email, assunto, mensagem)
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
@@ -204,7 +202,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 
     except Exception as e:
         session.rollback()
-        st.error(f"Erro ao cadastrar: {e}")
+        st.error(f"Erro no cadastro/envio do código: {e}")
         return False
     finally:
         session.close()
@@ -374,18 +372,20 @@ def interface():
                         if user:
                             user.verification_code = gerar_codigo_verificacao()
                             session.commit()
-                            # Envio de e-mail direto com o novo código
                             try:
                                 notificador = Notificador(
-                                    smtp_server="smtp.gmail.com",
-                                    smtp_port=587,
-                                    login="programador.descpro@gmail.com",
-                                    senha="Descpro2026"
+                                    smtp_server=config(
+                                        "SMTP_SERVER", default="smtp.gmail.com"),
+                                    smtp_port=int(
+                                        config("SMTP_PORT", default="587")),
+                                    login=config("SMTP_LOGIN"),
+                                    senha=config("SMTP_PASSWORD"),
                                 )
                                 assunto = "Código de Verificação - Oráculo Analista"
                                 mensagem = f"""
                                 <h3>Olá {user.name},</h3>
-                                <p>Seu novo código de verificação para o Oráculo Analista é: <strong>{user.verification_code}</strong></p>
+                                <p>Seu novo código de verificação para o Oráculo Analista é:
+                                <strong>{user.verification_code}</strong></p>
                                 <p>Use este código para ativar sua conta.</p>
                                 """
                                 notificador.enviar_email(
