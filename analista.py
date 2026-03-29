@@ -20,7 +20,17 @@ from PyPDF2 import PdfReader
 # =========================
 # Configurações iniciais
 # =========================
-GROQ_API_KEY = config("GROQ_API_KEY")
+GROQ_API_KEY = config("GROQ_API_KEY", default="")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY não configurada.")
+
+# Configuração Groq
+MODEL_NAME = config("GROQ_MODEL", default="llama-3.3-70b-versatile")
+
+def validar_groq_config() -> None:
+    if not GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY não configurada.")
+
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
