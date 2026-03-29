@@ -20,16 +20,18 @@ from PyPDF2 import PdfReader
 # =========================
 # Configurações iniciais
 # =========================
-GROQ_API_KEY = config("GROQ_API_KEY", default="")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY não configurada.")
 
-# Configuração Groq
+GROQ_API_KEY = config("GROQ_API_KEY", default="")
 MODEL_NAME = config("GROQ_MODEL", default="llama-3.3-70b-versatile")
 
-def validar_groq_config() -> None:
+def validar_groq_config():
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY não configurada.")
+
+def get_groq_client():
+    validar_groq_config()
+    from groq import Groq
+    return Groq(api_key=GROQ_API_KEY)
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
@@ -574,7 +576,7 @@ def oraculo_analista():
                     {resumir_texto_para_contexto(contexto_resumido, limite=12000)}
                     """
 
-                    client = groq.Groq(api_key=GROQ_API_KEY)
+                    client = get_groq_client()
                     full_response = ""
                     clean_response = ""
 
