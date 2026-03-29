@@ -156,16 +156,16 @@ def send_to_make_webhook(data: dict) -> bool:
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
     session = Session()
     try:
-        if session.query(UserAnalise).filter_by(email=email).first():
+        usuario_existente = session.query(UserAnalise).filter_by(email=email).first()
+        if usuario_existente:
             st.error("E-mail já cadastrado.")
             return False
 
         image_path = save_profile_image(profile_image, email)
         codigo = gerar_codigo_verificacao()
-        senha_hash = bcrypt.hashpw(
-            password.encode(), bcrypt.gensalt()).decode()
+        senha_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-        novo = UserAnalise(
+        novo_usuario = UserAnalise(
             name=name,
             whatsapp=whatsapp,
             email=email,
@@ -176,14 +176,14 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
             cargo_id=cargo_id,
         )
 
-        session.add(novo)
+        session.add(novo_usuario)
         session.commit()
 
         notificador = Notificador()
 
         assunto = "Código de Verificação - Oráculo Analista"
         mensagem = f"""
-        <h3>Olá {name},</h3>
+        <h3>Olá, {name}</h3>
         <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
         <p>Use este código para ativar sua conta.</p>
         """
@@ -199,6 +199,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.rollback()
         st.error(f"Erro no cadastro/envio do código: {e}")
         return False
+
     finally:
         session.close()
 
@@ -311,27 +312,19 @@ def interface():
             cargo_id = None
 
         if st.sidebar.button("Cadastrar"):
-            erro = False
-            if not nome:
-                st.sidebar.error("Preencha o campo Nome.")
-                erro = True
-            if not zap:
-                st.sidebar.error("Preencha o campo WhatsApp.")
-                erro = True
-            if not email:
-                st.sidebar.error("Preencha o campo Email.")
-                erro = True
-            if not senha:
-                st.sidebar.error("Preencha o campo Senha.")
-                erro = True
-            if not imagem:
-                st.sidebar.error("Selecione uma Imagem de Perfil.")
-                erro = True
-            if cargo_id is None:
-                st.sidebar.error("Selecione um Cargo.")
-                erro = True
-            if not erro:
-                cadastrar_usuario(nome, zap, email, senha, imagem, cargo_id)
+            if not nome or not zap or not email or not senha:
+                st.sidebar.error("Preencha todos os campos obrigatórios.")
+            elif not cargo_id:
+                st.sidebar.error("Selecione um cargo.")
+            else:
+                cadastrar_usuario(
+                    name=nome,
+                    whatsapp=zap,
+                    email=email,
+                    password=senha,
+                    profile_image=imagem,
+                    cargo_id=cargo_id,
+                )
 
     elif opcao == "Login":
         email = st.sidebar.text_input("Email")
@@ -364,32 +357,57 @@ def interface():
                         user = session.query(UserAnalise).filter_by(
                             email=st.session_state.temp_email
                         ).first()
-                        if user:
-                            user.verification_code = gerar_codigo_verificacao()
+
+                        if not user:
+                            st.error("Usuário não encontrado para reenvio do código.")
+                        else:
+                            novo_codigo = gerar_codigo_verificacao()
+                            user.verification_code = novo_codigo
                             session.commit()
-                            try:
-                                notificador = Notificador()
-                                assunto = "Código de Verificação - Oráculo Analista"
-                                mensagem = f"""
-                                <h3>Olá {user.name},</h3>
-                                <p>Seu novo código de verificação para o Oráculo Analista é:
-                                <strong>{user.verification_code}</strong></p>
-                                <p>Use este código para ativar sua conta.</p>
-                                """
-                                notificador.enviar_email(
-                                    user.email, assunto, mensagem)
-                                st.success(
-                                    "Código reenviado com sucesso! Verifique seu e-mail.")
-                            except Exception as e:
-                                st.error(
-                                    f"Erro ao reenviar e-mail de verificação: {e}")
+
+                            notificador = Notificador()
+
+                            assunto = "Código de Verificação - Oráculo Analista"
+                            mensagem = f"""
+                            <h3>Olá, {user.name}</h3>
+                            <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
+                            <p>Use este código para ativar sua conta.</p>
+                            """
+
+                            notificador.enviar_email(user.email, assunto, mensagem)
+                            st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+
                     finally:
                         session.close()
 
                 codigo = st.text_input(
                     "Código de Verificação", key="codigo_cadastro")
                 if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                    verificar_codigo(st.session_state.temp_email, codigo)
+                    session = Session()
+                    try:
+                        user = session.query(UserAnalise).filter_by(
+                            email=st.session_state.temp_email
+                        ).first()
+
+                        if not user:
+                            st.error("Usuário não encontrado.")
+                        elif codigo != user.verification_code:
+                            st.error("Código de verificação inválido.")
+                        else:
+                            user.is_verified = True
+                            user.verification_code = None
+                            session.commit()
+                            st.success("Conta verificada com sucesso!")
+                            st.session_state.temp_email = None
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"Erro ao confirmar código: {e}")
+                    finally:
+                        session.close()
 
     if "verificar_pagamento" not in st.session_state:
         st.session_state.verificar_pagamento = False
