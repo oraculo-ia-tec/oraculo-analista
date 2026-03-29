@@ -179,12 +179,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.add(novo)
         session.commit()
 
-        notificador = Notificador(
-            smtp_server=config("SMTP_SERVER", default="smtp.gmail.com"),
-            smtp_port=int(config("SMTP_PORT", default="587")),
-            login=config("SMTP_LOGIN"),
-            senha=config("SMTP_PASSWORD"),
-        )
+        notificador = Notificador()
 
         assunto = "Código de Verificação - Oráculo Analista"
         mensagem = f"""
@@ -373,14 +368,7 @@ def interface():
                             user.verification_code = gerar_codigo_verificacao()
                             session.commit()
                             try:
-                                notificador = Notificador(
-                                    smtp_server=config(
-                                        "SMTP_SERVER", default="smtp.gmail.com"),
-                                    smtp_port=int(
-                                        config("SMTP_PORT", default="587")),
-                                    login=config("SMTP_LOGIN"),
-                                    senha=config("SMTP_PASSWORD"),
-                                )
+                                notificador = Notificador()
                                 assunto = "Código de Verificação - Oráculo Analista"
                                 mensagem = f"""
                                 <h3>Olá {user.name},</h3>
