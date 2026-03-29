@@ -1,37 +1,123 @@
-import streamlit as st
-import pandas as pd
-from PyPDF2 import PdfReader
-import json
-import xml.etree.ElementTree as ET
-from docx import Document
-import os
 import base64
-import re
-import replicate
-from decouple import config
 import io
-from fpdf import FPDF
+import json
+import os
+import re
 import time
+import xml.etree.ElementTree as ET
 
-# 🔧 CONFIGURAÇÕES INICIAIS
+import groq
+import pandas as pd
+import requests
+import streamlit as st
+from decouple import config
+from docx import Document
+from fpdf import FPDF
+from openpyxl.styles import Alignment, Font, PatternFill
+from PyPDF2 import PdfReader
 
-REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN')
+
+# =========================
+# Configurações iniciais
+# =========================
+GROQ_API_KEY = config("GROQ_API_KEY")
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
 icons = {
     "assistant": "./src/img/perfil-analista.png",
-    "user": "./src/img/usuario.jpg"
+    "user": "./src/img/usuario.jpg",
 }
 
 
-# 🧠 GERENCIAMENTO DE SESSÃO E USUÁRIO
+# =========================
+# Utilidades de contexto
+# =========================
+def resumir_texto_para_contexto(texto: str, limite: int = 12000) -> str:
+    if not texto:
+        return ""
+    texto = texto.strip()
+    if len(texto) <= limite:
+        return texto
+    return texto[:limite] + "\n\n[Conteúdo truncado automaticamente por limite de contexto.]"
 
+
+def obter_resumo_arquivos(arquivos):
+    blocos = []
+
+    for arq in arquivos:
+        nome = arq.get("name", "arquivo")
+        tipo = arq.get("type", "desconhecido")
+        paginas = arq.get("pages")
+        texto = resumir_texto_para_contexto(arq.get("text", ""), limite=6000)
+
+        meta = f"Arquivo: {nome} | Tipo: {tipo}"
+        if paginas is not None:
+            meta += f" | Páginas: {paginas}"
+
+        blocos.append(f"{meta}\n{texto}")
+
+    return "\n\n".join(blocos)
+
+
+def responder_pergunta_simples(prompt: str, arquivos):
+    prompt_lower = prompt.lower().strip()
+
+    if (
+        "quantas páginas" in prompt_lower
+        or "numero de páginas" in prompt_lower
+        or "número de páginas" in prompt_lower
+    ):
+        pdfs = [a for a in arquivos if a.get(
+            "type") == "pdf" and a.get("pages") is not None]
+
+        if len(pdfs) == 1:
+            return f"O documento {pdfs[0]['name']} possui {pdfs[0]['pages']} páginas."
+        elif len(pdfs) > 1:
+            resposta = []
+            for pdf in pdfs:
+                resposta.append(f"{pdf['name']}: {pdf['pages']} páginas")
+            return "Documentos PDF carregados:\n" + "\n".join(resposta)
+
+    return None
+
+
+def montar_historico_reduzido(max_mensagens: int = 6):
+    return st.session_state.get("messages", [])[-max_mensagens:]
+
+
+# =========================
+# LLM
+# =========================
+def generate_groq_response(client, system_prompt, prompt, history=None):
+    messages = [{"role": "system", "content": system_prompt}]
+
+    for dict_message in history or []:
+        messages.append(
+            {"role": dict_message["role"], "content": dict_message["content"]}
+        )
+
+    messages.append({"role": "user", "content": prompt})
+
+    stream = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        temperature=0.1,
+        max_tokens=1200,
+        top_p=1,
+        stream=True,
+    )
+    return stream
+
+
+# =========================
+# Sessão e usuário
+# =========================
 def atualizar_primeiro_nome():
-    if "user" in st.session_state:
+    if "user" in st.session_state and getattr(st.session_state.user, "name", None):
         nome_completo = st.session_state.user.name.strip()
-        primeiro_nome = nome_completo.split()[0]
-        st.session_state["primeiro_nome"] = primeiro_nome
+        if nome_completo:
+            st.session_state["primeiro_nome"] = nome_completo.split()[0]
 
 
 def atualizar_imagem_perfil(email):
@@ -54,100 +140,223 @@ def obter_avatar_usuario():
     return "./src/img/usuario.jpg"
 
 
-# 📄 LEITORES DE ARQUIVOS
-
+# =========================
+# Leitores de arquivo
+# =========================
 def read_xlsx(file):
     text = ""
     with pd.ExcelFile(file) as xls:
         for sheet_name in xls.sheet_names:
             df = pd.read_excel(xls, sheet_name=sheet_name)
-            text += f'--- Aba: {sheet_name} ---\n{df.to_string()}\n\n'
-    return text
+            text += f"--- Aba: {sheet_name} ---\n{df.to_string()}\n\n"
+
+    return {
+        "text": text,
+        "pages": None,
+        "type": "xlsx",
+    }
 
 
 def read_pdf(file):
     text = ""
     pdf_reader = PdfReader(file)
+    total_pages = len(pdf_reader.pages)
+
     for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
+        extracted = page.extract_text() or ""
+        text += extracted + "\n"
+
+    return {
+        "text": text,
+        "pages": total_pages,
+        "type": "pdf",
+    }
 
 
 def read_json(file):
-    return json.dumps(json.load(file), indent=4)
+    return {
+        "text": json.dumps(json.load(file), indent=4, ensure_ascii=False),
+        "pages": None,
+        "type": "json",
+    }
 
 
 def read_xml(file):
     tree = ET.parse(file)
-    return ET.tostring(tree.getroot(), encoding='utf-8').decode('utf-8')
+    return {
+        "text": ET.tostring(tree.getroot(), encoding="utf-8").decode("utf-8"),
+        "pages": None,
+        "type": "xml",
+    }
 
 
 def read_html(file):
-    return file.read().decode("utf-8")
+    return {
+        "text": file.read().decode("utf-8"),
+        "pages": None,
+        "type": "html",
+    }
 
 
 def read_docx(file):
     doc = Document(file)
-    return '\n'.join(paragraph.text for paragraph in doc.paragraphs)
+    text = "\n".join(paragraph.text for paragraph in doc.paragraphs)
+    return {
+        "text": text,
+        "pages": None,
+        "type": "docx",
+    }
 
 
 def read_txt(file):
-    return file.read().decode("utf-8")
+    return {
+        "text": file.read().decode("utf-8"),
+        "pages": None,
+        "type": "txt",
+    }
 
 
-# 📤 CARREGAMENTO DE ARQUIVOS PARA ANÁLISE
-
+# =========================
+# Upload para análise
+# =========================
 def carregar_arquivos():
     uploaded_files = st.sidebar.file_uploader(
         "Coloque seu arquivo aqui:",
-        type=["xlsx", "pdf", "xml", "json", "html", "htm", "doc", "docx", "txt", "xls"],
-        accept_multiple_files=True
+        type=["xlsx", "pdf", "xml", "json", "html",
+              "htm", "doc", "docx", "txt", "xls"],
+        accept_multiple_files=True,
     )
 
-    conteudos = []
-    if st.sidebar.button('CARREGAR'):
+    arquivos_processados = []
+
+    if st.sidebar.button("CARREGAR"):
+        if not uploaded_files:
+            st.warning("Nenhum arquivo foi selecionado.")
+            return arquivos_processados
+
         for file in uploaded_files:
             st.write(f"**Arquivo carregado:** {file.name}")
 
-            if file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             "application/vnd.ms-excel"]:
-                conteudo = read_xlsx(file)
+            if file.type in [
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-excel",
+            ]:
+                resultado = read_xlsx(file)
             elif file.type == "application/pdf":
-                conteudo = read_pdf(file)
+                resultado = read_pdf(file)
             elif file.type == "application/json":
-                conteudo = read_json(file)
+                resultado = read_json(file)
             elif file.type in ["application/xml", "text/xml"]:
-                conteudo = read_xml(file)
-            elif file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                               "application/msword"]:
-                conteudo = read_docx(file)
+                resultado = read_xml(file)
+            elif file.type in [
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/msword",
+            ]:
+                resultado = read_docx(file)
             elif file.type == "text/plain":
-                conteudo = read_txt(file)
+                resultado = read_txt(file)
             elif file.type in ["text/html", "text/htm"]:
-                conteudo = read_html(file)
+                resultado = read_html(file)
             else:
-                conteudo = "Tipo de arquivo não suportado."
+                resultado = {
+                    "text": "Tipo de arquivo não suportado.",
+                    "pages": None,
+                    "type": "unknown",
+                }
 
-            conteudos.append(conteudo)
+            resultado["name"] = file.name
+            arquivos_processados.append(resultado)
 
-    return conteudos
+    return arquivos_processados
 
 
-# 🔍 DETECÇÃO DE INTENÇÃO
-
+# =========================
+# Intenção do usuário
+# =========================
 def verificar_intencao_usuario(prompt):
     prompt = prompt.lower()
-    if any(p in prompt for p in ["plano", "assinar", "upgrade", "mensal", "trimestral", "anual", "contratar", "preço"]):
+
+    if any(
+        p in prompt
+        for p in ["plano", "assinar", "upgrade", "mensal", "trimestral", "anual", "contratar", "preço"]
+    ):
         return "plano"
-    if any(p in prompt for p in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]):
+
+    if any(
+        p in prompt
+        for p in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]
+    ):
         return "reuniao"
+
     return None
 
 
-# 💬 INTERFACE PRINCIPAL DO CHAT ANALISTA
+# =========================
+# Exportação
+# =========================
+def gerar_excel_conversa(df: pd.DataFrame) -> bytes:
+    excel_buffer = io.BytesIO()
 
+    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Conversa", index=False)
+
+        worksheet = writer.sheets["Conversa"]
+
+        header_fill = PatternFill(fill_type="solid", fgColor="D7E4BC")
+        header_font = Font(bold=True)
+        header_alignment = Alignment(vertical="top", wrap_text=True)
+
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        for column_cells in worksheet.columns:
+            max_length = 0
+            column_letter = column_cells[0].column_letter
+
+            for cell in column_cells:
+                try:
+                    cell_value = str(
+                        cell.value) if cell.value is not None else ""
+                    if len(cell_value) > max_length:
+                        max_length = len(cell_value)
+                except Exception:
+                    pass
+
+            worksheet.column_dimensions[column_letter].width = min(
+                max(max_length + 2, 20), 60)
+
+    excel_buffer.seek(0)
+    return excel_buffer.getvalue()
+
+
+def gerar_pdf_conversa(chat_text: list[dict]) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, "Oráculo Analista - Histórico de Conversa",
+             ln=True, align="C")
+    pdf.ln(5)
+    pdf.set_font("Arial", size=12)
+
+    def remover_emojis(texto):
+        return re.sub(r"[^\x00-\x7F]+", "", texto)
+
+    for m in chat_text:
+        role = remover_emojis(m["role"].capitalize())
+        content = remover_emojis(m["content"])
+        pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
+
+    return pdf.output(dest="S").encode("latin-1", errors="ignore")
+
+
+# =========================
+# Interface principal
+# =========================
 def oraculo_analista():
-
     atualizar_primeiro_nome()
 
     st.markdown(
@@ -167,80 +376,119 @@ def oraculo_analista():
         }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     st.markdown(
         f"<h1 class='title'>Análise rápida e precisa com o <span class='highlight-creme'>Oráculo</span> "
         f"<span class='highlight-dourado'>Analista</span></h1>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    st.sidebar.image("./src/img/perfil-analista.png", width=500)
+    if os.path.exists("./src/img/perfil-analista.png"):
+        st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
     if st.sidebar.button("🔄 Limpar Conversa"):
         st.session_state.messages = []
+        st.session_state.full_content = ""
+        st.session_state.arquivos_processados = []
         st.rerun()
 
-    conteudos = carregar_arquivos()
+    arquivos = carregar_arquivos()
 
-    if conteudos:
+    if arquivos:
+        st.session_state.arquivos_processados = arquivos
+        st.session_state.full_content = obter_resumo_arquivos(arquivos)
+
         st.subheader("Conteúdo dos Arquivos Carregados:")
-        full_content = "\n".join(conteudos)
-        st.session_state.full_content = full_content
-        for i, conteudo in enumerate(conteudos):
-            st.text_area(f"Conteúdo do Arquivo {i + 1}", conteudo, height=200)
+        for i, arq in enumerate(arquivos):
+            titulo = f"{arq.get('name', f'Arquivo {i+1}')}"
+            if arq.get("pages") is not None:
+                titulo += f" | {arq['pages']} páginas"
+            st.text_area(
+                titulo,
+                resumir_texto_para_contexto(arq.get("text", ""), limite=3000),
+                height=200,
+            )
 
     if "messages" not in st.session_state:
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": f'🌟 {st.session_state.get("primeiro_nome", "Usuário")}, estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡'
-        }]
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": f'🌟 {st.session_state.get("primeiro_nome", "Usuário")}, estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡',
+            }
+        ]
 
     for message in st.session_state.messages:
-        avatar_image = obter_avatar_usuario() if message["role"] == "user" else icons["assistant"]
+        avatar_image = (
+            obter_avatar_usuario(
+            ) if message["role"] == "user" else icons["assistant"]
+        )
         with st.chat_message(message["role"], avatar=avatar_image):
             st.write(message["content"])
 
-    # Seção 1 - Entrada do usuário
     if prompt := st.chat_input("Digite sua pergunta aqui:", key="chat_input_analista"):
         avatar_image = obter_avatar_usuario()
         intencao = verificar_intencao_usuario(prompt)
 
-        # Mostra a mensagem do usuário primeiro (para respeitar ordem de exibição no chat)
         with st.chat_message("user", avatar=avatar_image):
             st.write(prompt)
+
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        if intencao in ["plano", "reuniao"]:
-            time.sleep(3)  # Delay para humanização
+        arquivos = st.session_state.get("arquivos_processados", [])
+        resposta_local = responder_pergunta_simples(prompt, arquivos)
 
-            # Seção 2 - Escolha de plano
+        if resposta_local:
+            with st.chat_message("assistant", avatar=icons["assistant"]):
+                st.write(resposta_local)
+
+            st.session_state.messages.append(
+                {"role": "assistant", "content": resposta_local}
+            )
+            return
+
+        if intencao in ["plano", "reuniao"]:
+            time.sleep(3)
+
             if intencao == "plano":
                 with st.chat_message("assistant", avatar=icons["assistant"]):
-                    st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
+                    st.markdown(
+                        "💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
 
                     with st.form("form_planos", clear_on_submit=True):
                         st.markdown("### 💼 Planos Oráculo Analista")
-                        st.write("Escolha um dos planos abaixo para liberar recursos avançados.")
+                        st.write(
+                            "Escolha um dos planos abaixo para liberar recursos avançados.")
 
                         col1, col2 = st.columns(2)
                         with col1:
-                            plano = st.selectbox("Selecione um plano:",
-                                                 ["Mensal - R$ 49,90", "Trimestral - R$ 119,90", "Anual - R$ 369,90"],
-                                                 key="plano_escolhido")
+                            plano = st.selectbox(
+                                "Selecione um plano:",
+                                [
+                                    "Mensal - R$ 49,90",
+                                    "Trimestral - R$ 119,90",
+                                    "Anual - R$ 369,90",
+                                ],
+                                key="plano_escolhido",
+                            )
 
                         with col2:
                             if plano == "Mensal - R$ 49,90":
-                                st.write("Ideal para quem deseja experimentar nossos serviços por um curto período.")
-                                st.link_button("Assinar Mensal", "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc")
+                                st.write(
+                                    "Ideal para quem deseja experimentar nossos serviços por um curto período.")
+                                st.link_button(
+                                    "Assinar Mensal", "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc")
                             elif plano == "Trimestral - R$ 119,90":
-                                st.write("Economize em relação ao plano mensal e tenha mais tempo para aproveitar.")
-                                st.link_button("Assinar Trimestral", "https://sandbox.asaas.com/c/jsmak76vdo5fke23")
+                                st.write(
+                                    "Economize em relação ao plano mensal e tenha mais tempo para aproveitar.")
+                                st.link_button(
+                                    "Assinar Trimestral", "https://sandbox.asaas.com/c/jsmak76vdo5fke23")
                             elif plano == "Anual - R$ 369,90":
                                 st.write(
                                     "A melhor opção para quem deseja um compromisso a longo prazo com descontos significativos.")
-                                st.link_button("Assinar Anual", "https://sandbox.asaas.com/c/adu6nd24lf8jauo3")
+                                st.link_button(
+                                    "Assinar Anual", "https://sandbox.asaas.com/c/adu6nd24lf8jauo3")
 
                         assinar = st.form_submit_button("Confirmar plano")
 
@@ -249,26 +497,30 @@ def oraculo_analista():
                             "✅ Plano selecionado com sucesso! Você será redirecionado para concluir sua assinatura.")
                         st.balloons()
 
-            # Seção 3 - Agendamento
             if intencao == "reuniao":
                 with st.chat_message("assistant", avatar=icons["assistant"]):
-                    st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
+                    st.markdown(
+                        "📅 Parece que você deseja agendar uma reunião! Preencha as informações abaixo:")
                     st.markdown(
                         "Assim que você finalizar o cadastro de agendamento você receberá uma confirmação em seu e-mail.")
 
                     with st.form("form_agendamento", clear_on_submit=True):
-                        nome = st.text_input("Nome completo", key="nome_agendamento")
-                        empresa = st.text_input("Empresa (opcional)", key="empresa_agendamento")
-                        whatsapp = st.text_input("WhatsApp", key="whatsapp_agendamento")
-                        email = st.text_input("E-mail", key="email_agendamento")
+                        nome = st.text_input(
+                            "Nome completo", key="nome_agendamento")
+                        empresa = st.text_input(
+                            "Empresa (opcional)", key="empresa_agendamento")
+                        whatsapp = st.text_input(
+                            "WhatsApp", key="whatsapp_agendamento")
+                        email = st.text_input(
+                            "E-mail", key="email_agendamento")
                         data = st.date_input("Data", key="data_agendamento")
                         hora = st.time_input("Horário", key="hora_agendamento")
 
                         agendar = st.form_submit_button("Agendar")
 
                     if agendar:
-                        from decouple import config
-                        WEBHOOK_AGENDA_ANALISTA = config('WEBHOOK_AGENDA_ANALISTA')
+                        webhook_agenda = config(
+                            "WEBHOOK_AGENDA_ANALISTA", default="")
 
                         dados_agenda = {
                             "nome": nome,
@@ -276,125 +528,103 @@ def oraculo_analista():
                             "whatsapp": whatsapp,
                             "email": email,
                             "data": str(data),
-                            "hora": str(hora)
+                            "hora": str(hora),
                         }
 
                         try:
-                            resposta = requests.post(WEBHOOK_AGENDA_ANALISTA, json=dados_agenda)
+                            resposta = requests.post(
+                                webhook_agenda, json=dados_agenda, timeout=20)
                             if resposta.status_code == 200:
-                                st.success(f"✅ Obrigado {nome}, seu agendamento foi realizado com sucesso!")
-                                st.info("Você receberá um e-mail com a confirmação do seu agendamento.")
+                                st.success(
+                                    f"✅ Obrigado {nome}, seu agendamento foi realizado com sucesso!")
+                                st.info(
+                                    "Você receberá um e-mail com a confirmação do seu agendamento.")
                                 st.balloons()
                             else:
-                                st.error("❌ Erro ao enviar agendamento para o Oráculo Analista.")
+                                st.error(
+                                    "❌ Erro ao enviar agendamento para o Oráculo Analista.")
                         except Exception as e:
                             st.error(f"Erro ao enviar para Webhook: {e}")
 
-
-        # Seção 4 - Resposta do assistente (modelo LLM)
-        elif intencao not in ["plano", "reuniao"]:
+        else:
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 try:
-                    system_prompt = f"""
-                    Você é o Oráculo Analista, doutor e especializado especialisra em análise de dados. 
-                    Sua missão é dá respostas precisas e exatas sobre documentos carregados, com no máximo 256 
-                    caracteres por resposta — ou até 300 caracteres se necessário para completude.             
-                    Conteúdo dos documentos carregados:
-                    {st.session_state.get('full_content', '')}.
+                    arquivos = st.session_state.get("arquivos_processados", [])
+                    contexto_resumido = obter_resumo_arquivos(arquivos)
+                    historico_reduzido = montar_historico_reduzido(
+                        max_mensagens=6)
 
-                    Fornecer informações precisas:
-                        "Análise do arquivo {st.session_state.get('full_content', '')}: forneça uma visão geral do conteúdo e estrutura do arquivo."
-                        "Leia o arquivo {st.session_state.get('full_content', '')} e extraia as principais informações sobre [tópico_específico]."
-                        "Faça uma análise detalhada do arquivo {st.session_state.get('full_content', '')} e forneça uma lista de pontos-chave."
-                        Fornecer previsões sobre eventos futuros
-                        "Com base na análise do arquivo {st.session_state.get('full_content', '')}, preveja as tendências futuras para [tópico_específico]."
-                        "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre o impacto de [evento_ou_decisão] nos próximos [período_de_tempo]."
-                        "Faça uma análise de risco do arquivo {st.session_state.get('full_content', '')} e forneça uma previsão sobre a probabilidade de [evento_ou_resultado]."
-                        Fornecer recomendações ou decisões baseadas em regras e lógica
-                        "Com base na análise do arquivo {st.session_state.get('full_content', '')}, forneça recomendações para [problema_ou_decisão]."
-                        "Leia o arquivo {st.session_state.get('full_content', '')} e forneça uma decisão baseada em regras e lógica sobre [tópico_específico]."
-                        "Faça uma análise de custo-benefício do arquivo {st.session_state.get('full_content', '')} e forneça uma recomendação sobre a melhor opção."
+                    system_prompt = f"""
+                    Você é o Oráculo Analista, doutor e especialista em análise de dados.
+                    Sua missão é responder com objetividade, precisão e clareza.
+                    Use prioritariamente os metadados e o resumo dos documentos abaixo.
+                    Se a informação não estiver disponível no contexto resumido, diga isso claramente.
+
+                    Resumo dos documentos carregados:
+                    {resumir_texto_para_contexto(contexto_resumido, limite=12000)}
                     """
-                    full_prompt = f"{system_prompt}\n\nPergunta do usuário: {prompt}"
+
+                    client = groq.Groq(api_key=GROQ_API_KEY)
                     full_response = ""
-                    stream = replicate.stream(
-                        "anthropic/claude-3.7-sonnet",
-                        input={"top_p": 1, "prompt": full_prompt, "max_tokens": 2048, "temperature": 0.1}
-                    )
+                    clean_response = ""
 
                     with st.spinner("Gerando análise..."):
                         response_container = st.empty()
-                        for event in stream:
-                            full_response += str(event)
-                            clean_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
-                            response_container.markdown(clean_response)
+                        stream = generate_groq_response(
+                            client,
+                            system_prompt,
+                            prompt,
+                            history=historico_reduzido,
+                        )
 
-                    st.session_state.messages.append({"role": "assistant", "content": clean_response})
+                        for event in stream:
+                            if hasattr(event, "choices") and event.choices:
+                                delta = event.choices[0].delta.content or ""
+                                full_response += delta
+                                clean_response = re.sub(
+                                    r"<think>.*?</think>", "", full_response, flags=re.DOTALL
+                                ).strip()
+                                response_container.markdown(clean_response)
+
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": clean_response}
+                    )
+
                 except Exception as e:
                     st.error(f"Erro ao gerar análise: {str(e)}")
 
-        if st.session_state.get("messages"):
-            chat_text = [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state["messages"]
-            ]
-            df = pd.DataFrame(chat_text)
+    if st.session_state.get("messages"):
+        chat_text = [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state["messages"]
+        ]
+        df = pd.DataFrame(chat_text)
 
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Conversa', index=False)
-
-                workbook = writer.book
-                worksheet = writer.sheets['Conversa']
-                header_format = workbook.add_format({
-                    'bold': True,
-                    'text_wrap': True,
-                    'valign': 'top',
-                    'fg_color': '#D7E4BC',
-                    'border': 1
-                })
-                for col_num, value in enumerate(df.columns.values):
-                    worksheet.write(0, col_num, value, header_format)
-                    worksheet.set_column(col_num, col_num, 40)
-
-            excel_buffer.seek(0)
+        try:
+            excel_bytes = gerar_excel_conversa(df)
             st.download_button(
                 "📊 Baixar conversa em Excel",
-                data=excel_buffer,
+                data=excel_bytes,
                 file_name="chat_oraculo.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
+        except Exception as e:
+            st.error(f"Erro ao gerar Excel: {e}")
 
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.set_fill_color(240, 240, 240)
-            pdf.set_text_color(0, 0, 0)
-            pdf.cell(0, 10, "Oráculo Analista - Histórico de Conversa", ln=True, align="C")
-            pdf.ln(5)
-            pdf.set_font("Arial", size=12)
-
-            def remover_emojis(texto):
-                return re.sub(r'[^\x00-\x7F]+', '', texto)
-
-            for m in chat_text:
-                role = remover_emojis(m['role'].capitalize())
-                content = remover_emojis(m['content'])
-                pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
-
-            pdf_buffer = io.BytesIO()
-            pdf_content = pdf.output(dest='S').encode('latin-1')
-            pdf_buffer.write(pdf_content)
+        try:
+            pdf_bytes = gerar_pdf_conversa(chat_text)
+            pdf_buffer = io.BytesIO(pdf_bytes)
             pdf_buffer.seek(0)
 
             st.download_button(
                 "📄 Baixar conversa em PDF",
                 data=pdf_buffer,
                 file_name="chat_oraculo.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
             )
+        except Exception as e:
+            st.error(f"Erro ao gerar PDF: {e}")
 
-
-# PONTO DE ENTRADA
 
 if __name__ == "__main__":
     oraculo_analista()
