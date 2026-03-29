@@ -1,0 +1,31 @@
+import os
+import os
+import random
+import string
+
+import bcrypt
+import requests
+import streamlit as st
+from decouple import AutoConfig
+from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from notification import Notificador
+from analista import oraculo_analista
+
+# =========================
+# Configurações
+# =========================
+config = AutoConfig()
+DATABASE_URL = config("DATABASE_URL")
+WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
+VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
+
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+
+PROFILE_IMAGES_DIR = "./user_profiles/"
+os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
+
+# ...continua com o restante do código completo do app.py...

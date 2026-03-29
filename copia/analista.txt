@@ -1,0 +1,97 @@
+import base64
+import base64
+import io
+import json
+import os
+import re
+import time
+import xml.etree.ElementTree as ET
+
+import groq
+import pandas as pd
+import requests
+import streamlit as st
+from decouple import config
+from docx import Document
+from fpdf import FPDF
+from openpyxl.styles import Alignment, Font, PatternFill
+from PyPDF2 import PdfReader
+
+# =========================
+# Configurações iniciais
+# =========================
+GROQ_API_KEY = config("GROQ_API_KEY")
+PROFILE_IMAGES_DIR = "./user_profiles/"
+os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
+
+icons = {
+	"assistant": "./src/img/perfil-analista.png",
+	"user": "./src/img/usuario.jpg",
+}
+
+# =========================
+# Utilidades de contexto
+# =========================
+def resumir_texto_para_contexto(texto: str, limite: int = 12000) -> str:
+	if not texto:
+		return ""
+	texto = texto.strip()
+	if len(texto) <= limite:
+		return texto
+	return texto[:limite] + "\n\n[Conteúdo truncado automaticamente por limite de contexto.]"
+
+def obter_resumo_arquivos(arquivos):
+	blocos = []
+	for arq in arquivos:
+		nome = arq.get("name", "arquivo")
+		tipo = arq.get("type", "desconhecido")
+		paginas = arq.get("pages")
+		texto = resumir_texto_para_contexto(arq.get("text", ""), limite=6000)
+		meta = f"Arquivo: {nome} | Tipo: {tipo}"
+		if paginas is not None:
+			meta += f" | Páginas: {paginas}"
+		blocos.append(f"{meta}\n{texto}")
+	return "\n\n".join(blocos)
+
+def responder_pergunta_simples(prompt: str, arquivos):
+	prompt_lower = prompt.lower().strip()
+	if (
+		"quantas páginas" in prompt_lower
+		or "numero de páginas" in prompt_lower
+		or "número de páginas" in prompt_lower
+	):
+		pdfs = [a for a in arquivos if a.get(
+			"type") == "pdf" and a.get("pages") is not None]
+		if len(pdfs) == 1:
+			return f"O documento {pdfs[0]['name']} possui {pdfs[0]['pages']} páginas."
+		elif len(pdfs) > 1:
+			resposta = []
+			for pdf in pdfs:
+				resposta.append(f"{pdf['name']}: {pdf['pages']} páginas")
+			return "Documentos PDF carregados:\n" + "\n".join(resposta)
+	return None
+
+def montar_historico_reduzido(max_mensagens: int = 6):
+	return st.session_state.get("messages", [])[-max_mensagens:]
+
+# =========================
+# LLM
+# =========================
+def generate_groq_response(client, system_prompt, prompt, history=None):
+	messages = [{"role": "system", "content": system_prompt}]
+	for dict_message in history or []:
+		messages.append(
+			{"role": dict_message["role"], "content": dict_message["content"]}
+		)
+	messages.append({"role": "user", "content": prompt})
+	stream = client.chat.completions.create(
+		model="llama-3.3-70b-versatile",
+		messages=messages,
+		temperature=0.1,
+		max_tokens=1200,
+		top_p=1,
+		stream=True,
+	)
+	return stream
+
+# ...continua com o restante do código completo do analista.py...
