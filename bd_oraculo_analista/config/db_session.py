@@ -10,15 +10,15 @@ __engine: Optional[Engine] = None
 
 def create_engine() -> Engine:
     """
-    Função para configurar a conexão ao banco de dados MySQL.
+    Função para configurar a conexão ao banco de dados SQLite.
     """
     global __engine
 
     if __engine:
         return __engine
 
-    # String de conexão para MySQL usando variável de ambiente
-    conn_str = "mysql+pymysql://root:root@127.0.0.1:3306/db_oraculo_analista"
+    # String de conexão para SQLite
+    conn_str = "sqlite:///oraculo_analista.db"
     __engine = sa.create_engine(url=conn_str, echo=False)
 
     return __engine
