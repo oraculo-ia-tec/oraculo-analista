@@ -5,6 +5,9 @@ import string
 import bcrypt
 import requests
 import streamlit as st
+import os
+import sqlite3
+from notification import Notificador
 from decouple import AutoConfig
 from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -156,14 +159,16 @@ def send_to_make_webhook(data: dict) -> bool:
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
     session = Session()
     try:
-        usuario_existente = session.query(UserAnalise).filter_by(email=email).first()
+        usuario_existente = session.query(
+            UserAnalise).filter_by(email=email).first()
         if usuario_existente:
             st.error("E-mail já cadastrado.")
             return False
 
         image_path = save_profile_image(profile_image, email)
         codigo = gerar_codigo_verificacao()
-        senha_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        senha_hash = bcrypt.hashpw(
+            password.encode(), bcrypt.gensalt()).decode()
 
         novo_usuario = UserAnalise(
             name=name,
@@ -272,9 +277,97 @@ def interface():
         return
 
     st.sidebar.title("Oráculo Analista")
-    opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
+    menu_opcoes = ["Login", "Cadastrar", "Teste de E-mail"]
+    opcao = st.sidebar.radio("Selecione:", menu_opcoes)
 
-    if opcao == "Cadastrar":
+    if opcao == "Teste de E-mail":
+        st.header("Teste de Envio de E-mail")
+        aba = st.tabs(["Enviar", "Listar", "Logs de Erros"])
+
+        with aba[0]:  # Enviar
+            st.subheader("Enviar E-mail de Teste")
+            destino = st.text_input("E-mail de destino")
+            assunto = st.text_input(
+                "Assunto", value="Teste de envio - Oráculo Analista")
+            mensagem = st.text_area(
+                "Mensagem", value="<h3>Olá,</h3><p>Este é um teste de envio de e-mail pelo Oráculo Analista.</p>")
+            if st.button("Enviar E-mail"):
+                if not destino or not assunto or not mensagem:
+                    st.error("Preencha todos os campos.")
+                else:
+                    try:
+                        notificador = Notificador()
+                        resposta = notificador.enviar_email(
+                            destino, assunto, mensagem)
+                        st.success(
+                            f"E-mail enviado com sucesso! ID: {resposta.get('id')}")
+                        # Salvar log de envio
+                        with sqlite3.connect('oraculo_analista.db') as conn:
+                            conn.execute("""
+                                CREATE TABLE IF NOT EXISTS email_logs (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    destino TEXT,
+                                    assunto TEXT,
+                                    mensagem TEXT,
+                                    status TEXT,
+                                    resposta TEXT,
+                                    erro TEXT,
+                                    data_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                )
+                            """)
+                            conn.execute("""
+                                INSERT INTO email_logs (destino, assunto, mensagem, status, resposta, erro)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (destino, assunto, mensagem, 'sucesso', str(resposta), None))
+                    except Exception as e:
+                        st.error(f"Erro ao enviar e-mail: {e}")
+                        with sqlite3.connect('oraculo_analista.db') as conn:
+                            conn.execute("""
+                                CREATE TABLE IF NOT EXISTS email_logs (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    destino TEXT,
+                                    assunto TEXT,
+                                    mensagem TEXT,
+                                    status TEXT,
+                                    resposta TEXT,
+                                    erro TEXT,
+                                    data_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                )
+                            """)
+                            conn.execute("""
+                                INSERT INTO email_logs (destino, assunto, mensagem, status, resposta, erro)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (destino, assunto, mensagem, 'erro', None, str(e)))
+
+        with aba[1]:  # Listar
+            st.subheader("Histórico de E-mails Enviados")
+            try:
+                with sqlite3.connect('oraculo_analista.db') as conn:
+                    rows = conn.execute(
+                        "SELECT id, destino, assunto, data_envio, status FROM email_logs ORDER BY data_envio DESC LIMIT 50").fetchall()
+                if rows:
+                    st.table([{"ID": r[0], "Destino": r[1], "Assunto": r[2],
+                             "Data": r[3], "Status": r[4]} for r in rows])
+                else:
+                    st.info("Nenhum e-mail enviado ainda.")
+            except Exception as e:
+                st.error(f"Erro ao buscar histórico: {e}")
+
+        with aba[2]:  # Logs de Erros
+            st.subheader("Logs de Erros de Envio de E-mail")
+            try:
+                with sqlite3.connect('oraculo_analista.db') as conn:
+                    rows = conn.execute(
+                        "SELECT id, destino, assunto, erro, data_envio FROM email_logs WHERE status='erro' ORDER BY data_envio DESC LIMIT 50").fetchall()
+                if rows:
+                    st.table([{"ID": r[0], "Destino": r[1], "Assunto": r[2],
+                             "Erro": r[3], "Data": r[4]} for r in rows])
+                else:
+                    st.info("Nenhum erro registrado.")
+            except Exception as e:
+                st.error(f"Erro ao buscar logs de erro: {e}")
+
+        st.stop()
         nome = st.sidebar.text_input("Nome")
         zap = st.sidebar.text_input("WhatsApp")
         email = st.sidebar.text_input("Email")
@@ -359,7 +452,8 @@ def interface():
                         ).first()
 
                         if not user:
-                            st.error("Usuário não encontrado para reenvio do código.")
+                            st.error(
+                                "Usuário não encontrado para reenvio do código.")
                         else:
                             novo_codigo = gerar_codigo_verificacao()
                             user.verification_code = novo_codigo
@@ -374,12 +468,15 @@ def interface():
                             <p>Use este código para ativar sua conta.</p>
                             """
 
-                            notificador.enviar_email(user.email, assunto, mensagem)
-                            st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+                            notificador.enviar_email(
+                                user.email, assunto, mensagem)
+                            st.success(
+                                "Código reenviado com sucesso! Verifique seu e-mail.")
 
                     except Exception as e:
                         session.rollback()
-                        st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+                        st.error(
+                            f"Erro ao reenviar e-mail de verificação: {e}")
 
                     finally:
                         session.close()

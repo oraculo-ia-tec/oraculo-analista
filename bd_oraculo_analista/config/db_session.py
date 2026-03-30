@@ -8,6 +8,7 @@ from bd_oraculo_analista.models.model_base import ModelBase
 
 __engine: Optional[Engine] = None
 
+
 def create_engine() -> Engine:
     """
     Função para configurar a conexão ao banco de dados SQLite.
@@ -22,6 +23,7 @@ def create_engine() -> Engine:
     __engine = sa.create_engine(url=conn_str, echo=False)
 
     return __engine
+
 
 def create_session() -> Session:
     """
@@ -38,6 +40,7 @@ def create_session() -> Session:
 
     return session
 
+
 def create_tables() -> None:
     global __engine
 
@@ -45,7 +48,8 @@ def create_tables() -> None:
         create_engine()
 
     try:
-        import bd_oraculo_analista.models.__all_models  # Garante que todas as classes sejam registradas
+        # Garante que todas as classes sejam registradas
+        import bd_oraculo_analista.models.__all_models
 
         print("🔄 Criando as tabelas no banco de dados...")
         ModelBase.metadata.create_all(__engine)

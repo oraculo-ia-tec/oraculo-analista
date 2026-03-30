@@ -34,6 +34,8 @@ class Notificador:
             "GMAIL_REFRESH_TOKEN") or os.getenv("GMAIL_REFRESH_TOKEN")
         self.google_oauth_scopes_raw = email_secrets.get(
             "GOOGLE_OAUTH_SCOPES") or os.getenv("GOOGLE_OAUTH_SCOPES", "")
+        self.login = email_secrets.get(
+            "EMAIL_REMETENTE") or os.getenv("EMAIL_REMETENTE")
 
         self.google_scopes = self._load_scopes()
 

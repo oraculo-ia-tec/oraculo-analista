@@ -11,6 +11,10 @@ if __name__ == "__main__":
     """
     try:
         resposta = notificador.enviar_email(destino, assunto, mensagem)
+        print("\n==============================")
         print(f"E-mail enviado com sucesso! ID: {resposta.get('id')}")
+        print("==============================\n")
     except Exception as e:
+        print("\n==============================")
         print(f"Falha ao enviar e-mail: {e}")
+        print("==============================\n")

@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from notification import Notificador
 
+
 class TestReenviarCodigo(unittest.TestCase):
     def setUp(self):
         self.user = MagicMock()
@@ -26,6 +27,7 @@ class TestReenviarCodigo(unittest.TestCase):
         self.assertIn(self.user.verification_code, called_mensagem)
         self.assertIn(self.user.name, called_mensagem)
         self.assertIn("Oráculo Analista", called_assunto)
+
 
 if __name__ == "__main__":
     unittest.main()
