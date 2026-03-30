@@ -182,12 +182,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 
         # Envio de e-mail direto
         try:
-            notificador = Notificador(
-                smtp_server="smtp.gmail.com",
-                smtp_port=587,
-                login="programador.descpro@gmail.com",
-                senha="Descpro2026"
-            )
+            notificador = Notificador()
             assunto = "Código de Verificação - Oráculo Analista"
             mensagem = f"""
             <h3>Olá {name},</h3>
@@ -378,12 +373,7 @@ def interface():
                             session.commit()
                             # Envio de e-mail direto com o novo código
                             try:
-                                notificador = Notificador(
-                                    smtp_server="smtp.gmail.com",
-                                    smtp_port=587,
-                                    login="programador.descpro@gmail.com",
-                                    senha="Descpro2026"
-                                )
+                                notificador = Notificador()
                                 assunto = "Código de Verificação - Oráculo Analista"
                                 mensagem = f"""
                                 <h3>Olá {user.name},</h3>

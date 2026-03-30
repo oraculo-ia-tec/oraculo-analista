@@ -61,12 +61,7 @@ STATUS_TRANSLATE = {
 }
 
 # Configurações do notificador
-notificador = Notificador(
-    smtp_server="smtp.seuservidor.com",
-    smtp_port=587,
-    login="seu@email.com",
-    senha="sua_senha"
-)
+notificador = Notificador()
 
 reverse_translate = {v: k for k, v in STATUS_TRANSLATE.items()}
 status = st.selectbox("Filtrar pagamentos por status:", options=STATUS_OPTIONS, index=0)
