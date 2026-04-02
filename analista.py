@@ -244,7 +244,17 @@ def carregar_arquivos():
 
     arquivos_processados = []
 
-    if st.sidebar.button("CARREGAR"):
+    col_carregar, col_limpar = st.sidebar.columns(2)
+    btn_carregar = col_carregar.button("CARREGAR")
+    btn_limpar = col_limpar.button("🔄 Limpar Conversa")
+
+    if btn_limpar:
+        st.session_state.messages = []
+        st.session_state.full_content = ""
+        st.session_state.arquivos_processados = []
+        st.rerun()
+
+    if btn_carregar:
         if not uploaded_files:
             st.warning("Nenhum arquivo foi selecionado.")
             return arquivos_processados
@@ -302,6 +312,17 @@ def verificar_intencao_usuario(prompt):
         for p in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]
     ):
         return "reuniao"
+
+    if any(
+        p in prompt
+        for p in [
+            "finalizar", "encerrar", "terminei", "concluir", "acabou",
+            "pronto", "é isso", "obrigado", "obrigada", "valeu",
+            "baixar", "exportar", "download", "salvar conversa",
+            "gerar pdf", "gerar excel", "fim", "tchau", "até mais",
+        ]
+    ):
+        return "finalizar"
 
     return None
 
@@ -365,7 +386,10 @@ def gerar_pdf_conversa(chat_text: list[dict]) -> bytes:
         content = remover_emojis(m["content"])
         pdf.multi_cell(0, 10, f"{role}: {content}", border=0)
 
-    return pdf.output(dest="S").encode("latin-1", errors="ignore")
+    output = pdf.output(dest="S")
+    if isinstance(output, str):
+        return output.encode("latin-1", errors="ignore")
+    return bytes(output)
 
 
 # =========================
@@ -403,12 +427,6 @@ def oraculo_analista():
     if os.path.exists("./src/img/perfil-analista.png"):
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
-    if st.sidebar.button("🔄 Limpar Conversa"):
-        st.session_state.messages = []
-        st.session_state.full_content = ""
-        st.session_state.arquivos_processados = []
-        st.rerun()
-
     arquivos = carregar_arquivos()
 
     if arquivos:
@@ -427,10 +445,11 @@ def oraculo_analista():
             )
 
     if "messages" not in st.session_state:
+        primeiro_nome = st.session_state.get("primeiro_nome", "Usuário")
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": f'🌟 {st.session_state.get("primeiro_nome", "Usuário")}, estou aqui para te ajudar a analisar documentos. Carregue seus arquivos e faça suas perguntas! 💡',
+                "content": f'🌟 {primeiro_nome}, estou aqui para te ajudar a analisar ou fazer estudo sobre seus documentos. Carregue do lado esquerdo um documento para iniciar 💡',
             }
         ]
 
@@ -463,7 +482,7 @@ def oraculo_analista():
             )
             return
 
-        if intencao in ["plano", "reuniao"]:
+        if intencao in ["plano", "reuniao", "finalizar"]:
             time.sleep(3)
 
             if intencao == "plano":
@@ -561,6 +580,50 @@ def oraculo_analista():
                         except Exception as e:
                             st.error(f"Erro ao enviar para Webhook: {e}")
 
+            if intencao == "finalizar":
+                with st.chat_message("assistant", avatar=icons["assistant"]):
+                    primeiro_nome = st.session_state.get(
+                        "primeiro_nome", "Usuário")
+                    msg_final = f"😊 {primeiro_nome}, foi um prazer te ajudar! Você pode baixar o histórico da conversa nos formatos abaixo:"
+                    st.markdown(msg_final)
+
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": msg_final}
+                )
+
+                chat_text = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state["messages"]
+                ]
+                df = pd.DataFrame(chat_text)
+
+                col_excel, col_pdf = st.columns(2)
+                with col_excel:
+                    try:
+                        excel_bytes = gerar_excel_conversa(df)
+                        st.download_button(
+                            "📊 Baixar conversa em Excel",
+                            data=excel_bytes,
+                            file_name="chat_oraculo.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    except Exception as e:
+                        st.error(f"Erro ao gerar Excel: {e}")
+
+                with col_pdf:
+                    try:
+                        pdf_bytes = gerar_pdf_conversa(chat_text)
+                        pdf_buffer = io.BytesIO(pdf_bytes)
+                        pdf_buffer.seek(0)
+                        st.download_button(
+                            "📄 Baixar conversa em PDF",
+                            data=pdf_buffer,
+                            file_name="chat_oraculo.pdf",
+                            mime="application/pdf",
+                        )
+                    except Exception as e:
+                        st.error(f"Erro ao gerar PDF: {e}")
+
         else:
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 try:
@@ -574,6 +637,9 @@ def oraculo_analista():
                     Sua missão é responder com objetividade, precisão e clareza.
                     Use prioritariamente os metadados e o resumo dos documentos abaixo.
                     Se a informação não estiver disponível no contexto resumido, diga isso claramente.
+
+                    O nome do usuário que está conversando com você é {st.session_state.get("primeiro_nome", "Usuário")}.
+                    Sempre chame o usuário pelo primeiro nome de forma amigável e cordial nas suas respostas.
 
                     Resumo dos documentos carregados:
                     {resumir_texto_para_contexto(contexto_resumido, limite=12000)}
@@ -607,38 +673,6 @@ def oraculo_analista():
 
                 except Exception as e:
                     st.error(f"Erro ao gerar análise: {str(e)}")
-
-    if st.session_state.get("messages"):
-        chat_text = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state["messages"]
-        ]
-        df = pd.DataFrame(chat_text)
-
-        try:
-            excel_bytes = gerar_excel_conversa(df)
-            st.download_button(
-                "📊 Baixar conversa em Excel",
-                data=excel_bytes,
-                file_name="chat_oraculo.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        except Exception as e:
-            st.error(f"Erro ao gerar Excel: {e}")
-
-        try:
-            pdf_bytes = gerar_pdf_conversa(chat_text)
-            pdf_buffer = io.BytesIO(pdf_bytes)
-            pdf_buffer.seek(0)
-
-            st.download_button(
-                "📄 Baixar conversa em PDF",
-                data=pdf_buffer,
-                file_name="chat_oraculo.pdf",
-                mime="application/pdf",
-            )
-        except Exception as e:
-            st.error(f"Erro ao gerar PDF: {e}")
 
 
 if __name__ == "__main__":
