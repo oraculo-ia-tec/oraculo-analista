@@ -7,12 +7,9 @@ import bcrypt
 import requests
 import streamlit as st
 import sqlite3
-from notification import Notificador
 from decouple import AutoConfig
 from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-
-from analista import oraculo_analista
 
 
 # =========================
@@ -35,12 +32,31 @@ if DATABASE_URL.startswith("sqlite:///") and not DATABASE_URL.startswith("sqlite
             shutil.copy2(_db_abs, _tmp_path)
         DATABASE_URL = f"sqlite:///{_tmp_path}"
 
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
+
+
+@st.cache_resource
+def get_engine():
+    return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+@st.cache_resource
+def get_session_factory():
+    return sessionmaker(bind=get_engine())
+
+
+@st.cache_resource
+def init_db():
+    Base.metadata.create_all(get_engine())
+
+
+@st.cache_data
+def load_video(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
 
 
 # =========================
@@ -67,7 +83,8 @@ class UserAnalise(Base):
     cargo_id = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
 
 
-Base.metadata.create_all(engine)
+init_db()
+Session = get_session_factory()
 
 
 # =========================
@@ -132,6 +149,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.add(novo_usuario)
         session.commit()
 
+        from notification import Notificador
         notificador = Notificador()
 
         assunto = "Código de Verificação - Oráculo Analista"
@@ -301,6 +319,7 @@ def interface():
                             user.verification_code = novo_codigo
                             session.commit()
 
+                            from notification import Notificador
                             notificador = Notificador()
 
                             assunto = "Código de Verificação - Oráculo Analista"
@@ -345,6 +364,7 @@ def interface():
                             user.verification_code = novo_codigo
                             session.commit()
 
+                            from notification import Notificador
                             notificador = Notificador()
 
                             assunto = "Código de Verificação - Oráculo Analista"
@@ -589,8 +609,7 @@ def main():
             "<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
 
         if os.path.exists(VIDEO_PATH):
-            with open(VIDEO_PATH, "rb") as video_file:
-                st.sidebar.video(video_file.read())
+            st.sidebar.video(load_video(VIDEO_PATH))
 
         st.markdown("---")
         st.markdown(
@@ -650,6 +669,7 @@ def main():
 
         # Roteamento de páginas
         if pagina == "Oráculo Analista":
+            from analista import oraculo_analista
             oraculo_analista()
         elif pagina == "Dashboard":
             from views.dashboard import render_dashboard

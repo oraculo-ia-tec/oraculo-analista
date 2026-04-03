@@ -8,10 +8,17 @@ import bcrypt
 def render_clientes(Session, UserAnalise, Cargo):
     st.header("👥 Clientes")
 
+    # Uma única consulta para cargo + lista de clientes
     session = Session()
     try:
         cargo_cliente = session.query(Cargo).filter_by(nome="Cliente").first()
         cargo_id_cliente = cargo_cliente.id if cargo_cliente else None
+        clientes_raw = session.query(UserAnalise).filter_by(cargo_id=cargo_id_cliente).all() if cargo_id_cliente else []
+        # Extrair dados antes de fechar a sessão
+        clientes_data = [
+            {"id": c.id, "name": c.name, "email": c.email, "whatsapp": c.whatsapp, "is_verified": c.is_verified}
+            for c in clientes_raw
+        ]
     finally:
         session.close()
 
@@ -21,20 +28,15 @@ def render_clientes(Session, UserAnalise, Cargo):
 
     # --- LISTAR ---
     with tab_listar:
-        session = Session()
-        try:
-            clientes = session.query(UserAnalise).filter_by(cargo_id=cargo_id_cliente).all() if cargo_id_cliente else []
-            if clientes:
-                df = pd.DataFrame([
-                    {"ID": c.id, "Nome": c.name, "Email": c.email, "WhatsApp": c.whatsapp, "Verificado": c.is_verified}
-                    for c in clientes
-                ])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.metric("Total de Clientes", len(clientes))
-            else:
-                st.info("Nenhum cliente encontrado.")
-        finally:
-            session.close()
+        if clientes_data:
+            df = pd.DataFrame([
+                {"ID": c["id"], "Nome": c["name"], "Email": c["email"], "WhatsApp": c["whatsapp"], "Verificado": c["is_verified"]}
+                for c in clientes_data
+            ])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.metric("Total de Clientes", len(clientes_data))
+        else:
+            st.info("Nenhum cliente encontrado.")
 
     # --- CRIAR ---
     with tab_criar:
@@ -89,12 +91,7 @@ def render_clientes(Session, UserAnalise, Cargo):
     with tab_editar:
         with st.container(border=True):
             st.subheader("Editar Cliente")
-            session = Session()
-            try:
-                clientes = session.query(UserAnalise).filter_by(cargo_id=cargo_id_cliente).all() if cargo_id_cliente else []
-                opcoes = {f"{c.name} ({c.email})": c.id for c in clientes}
-            finally:
-                session.close()
+            opcoes = {f"{c['name']} ({c['email']})": c["id"] for c in clientes_data}
 
             if opcoes:
                 selecionado = st.selectbox("Selecione o cliente:", list(opcoes.keys()), key="sel_edit_cli")
@@ -125,12 +122,7 @@ def render_clientes(Session, UserAnalise, Cargo):
     with tab_deletar:
         with st.container(border=True):
             st.subheader("Remover Cliente")
-            session = Session()
-            try:
-                clientes = session.query(UserAnalise).filter_by(cargo_id=cargo_id_cliente).all() if cargo_id_cliente else []
-                opcoes_del = {f"{c.name} ({c.email})": c.id for c in clientes}
-            finally:
-                session.close()
+            opcoes_del = {f"{c['name']} ({c['email']})": c["id"] for c in clientes_data}
 
             if opcoes_del:
                 selecionado_del = st.selectbox("Selecione o cliente:", list(opcoes_del.keys()), key="sel_del_cli")

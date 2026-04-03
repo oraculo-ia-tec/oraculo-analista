@@ -2,8 +2,6 @@
 
 import streamlit as st
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 from datetime import datetime
 
 
@@ -14,11 +12,17 @@ def render_dashboard(Session, UserAnalise, Cargo):
     try:
         usuarios = session.query(UserAnalise).all()
         cargos = {c.id: c.nome for c in session.query(Cargo).all()}
+        # Extrair dados antes de fechar a sessão
+        dados_usuarios = [
+            {"Nome": u.name, "Email": u.email, "Cargo": cargos.get(u.cargo_id, "—"),
+             "Verificado": u.is_verified}
+            for u in usuarios
+        ]
+        total_cadastrados = len(usuarios)
+        verificados = sum(1 for u in usuarios if u.is_verified)
     finally:
         session.close()
 
-    total_cadastrados = len(usuarios)
-    verificados = sum(1 for u in usuarios if u.is_verified)
     nao_verificados = total_cadastrados - verificados
 
     # --- Métricas ---
@@ -34,12 +38,12 @@ def render_dashboard(Session, UserAnalise, Cargo):
     # --- Distribuição por cargo ---
     with st.container(border=True):
         st.subheader("Distribuição por Cargo")
-        df = pd.DataFrame([
-            {"Nome": u.name, "Email": u.email, "Cargo": cargos.get(u.cargo_id, "—"), "Verificado": u.is_verified}
-            for u in usuarios
-        ])
+        df = pd.DataFrame(dados_usuarios)
 
         if not df.empty:
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+
             col_chart, col_table = st.columns([1, 1])
             with col_chart:
                 fig, ax = plt.subplots(figsize=(5, 3))
@@ -65,6 +69,9 @@ def render_dashboard(Session, UserAnalise, Cargo):
     with st.container(border=True):
         st.subheader("Status de Verificação")
         if not df.empty:
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+
             fig2, ax2 = plt.subplots(figsize=(4, 3))
             verif_counts = df["Verificado"].value_counts().rename({True: "Verificado", False: "Pendente"})
             sns.barplot(x=verif_counts.index, y=verif_counts.values, palette="coolwarm", ax=ax2)

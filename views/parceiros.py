@@ -8,10 +8,16 @@ import bcrypt
 def render_parceiros(Session, UserAnalise, Cargo):
     st.header("🤝 Parceiros")
 
+    # Uma única consulta para cargo + lista de parceiros
     session = Session()
     try:
         cargo_parceiro = session.query(Cargo).filter_by(nome="Parceiro").first()
         cargo_id_parceiro = cargo_parceiro.id if cargo_parceiro else None
+        parceiros_raw = session.query(UserAnalise).filter_by(cargo_id=cargo_id_parceiro).all() if cargo_id_parceiro else []
+        parceiros_data = [
+            {"id": p.id, "name": p.name, "email": p.email, "whatsapp": p.whatsapp, "is_verified": p.is_verified}
+            for p in parceiros_raw
+        ]
     finally:
         session.close()
 
@@ -21,20 +27,15 @@ def render_parceiros(Session, UserAnalise, Cargo):
 
     # --- LISTAR ---
     with tab_listar:
-        session = Session()
-        try:
-            parceiros = session.query(UserAnalise).filter_by(cargo_id=cargo_id_parceiro).all() if cargo_id_parceiro else []
-            if parceiros:
-                df = pd.DataFrame([
-                    {"ID": p.id, "Nome": p.name, "Email": p.email, "WhatsApp": p.whatsapp, "Verificado": p.is_verified}
-                    for p in parceiros
-                ])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.metric("Total de Parceiros", len(parceiros))
-            else:
-                st.info("Nenhum parceiro encontrado.")
-        finally:
-            session.close()
+        if parceiros_data:
+            df = pd.DataFrame([
+                {"ID": p["id"], "Nome": p["name"], "Email": p["email"], "WhatsApp": p["whatsapp"], "Verificado": p["is_verified"]}
+                for p in parceiros_data
+            ])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.metric("Total de Parceiros", len(parceiros_data))
+        else:
+            st.info("Nenhum parceiro encontrado.")
 
     # --- CRIAR ---
     with tab_criar:
@@ -76,12 +77,7 @@ def render_parceiros(Session, UserAnalise, Cargo):
     with tab_editar:
         with st.container(border=True):
             st.subheader("Editar Parceiro")
-            session = Session()
-            try:
-                parceiros = session.query(UserAnalise).filter_by(cargo_id=cargo_id_parceiro).all() if cargo_id_parceiro else []
-                opcoes = {f"{p.name} ({p.email})": p.id for p in parceiros}
-            finally:
-                session.close()
+            opcoes = {f"{p['name']} ({p['email']})": p["id"] for p in parceiros_data}
 
             if opcoes:
                 selecionado = st.selectbox("Selecione o parceiro:", list(opcoes.keys()), key="sel_edit_par")
@@ -112,12 +108,7 @@ def render_parceiros(Session, UserAnalise, Cargo):
     with tab_deletar:
         with st.container(border=True):
             st.subheader("Remover Parceiro")
-            session = Session()
-            try:
-                parceiros = session.query(UserAnalise).filter_by(cargo_id=cargo_id_parceiro).all() if cargo_id_parceiro else []
-                opcoes_del = {f"{p.name} ({p.email})": p.id for p in parceiros}
-            finally:
-                session.close()
+            opcoes_del = {f"{p['name']} ({p['email']})": p["id"] for p in parceiros_data}
 
             if opcoes_del:
                 selecionado_del = st.selectbox("Selecione o parceiro:", list(opcoes_del.keys()), key="sel_del_par")
