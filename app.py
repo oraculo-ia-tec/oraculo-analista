@@ -620,6 +620,9 @@ def main():
         finally:
             session.close()
 
+        # Salvar primeiro nome para saudação no chat
+        st.session_state.primeiro_nome = user_name.split()[0] if user_name else "Usuário"
+
         # Permissões por cargo
         from views.permissoes import obter_paginas_por_cargo
         paginas_permitidas = obter_paginas_por_cargo(cargo_nome)
