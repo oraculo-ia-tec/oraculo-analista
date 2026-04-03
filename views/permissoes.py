@@ -22,9 +22,11 @@ PERMISSOES = {
         "Oráculo Analista",
         "Dashboard",
         "Clientes",
+        "Configuração",
     ],
     "Cliente": [
         "Oráculo Analista",
+        "Configuração",
     ],
 }
 

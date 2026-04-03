@@ -45,32 +45,45 @@ def render_clientes(Session, UserAnalise, Cargo):
             whatsapp = st.text_input("WhatsApp", key="cli_whatsapp")
             senha = st.text_input("Senha", type="password", key="cli_senha")
 
-            if st.button("Cadastrar Cliente", key="btn_criar_cli"):
-                if not all([nome, email, whatsapp, senha]):
-                    st.error("Preencha todos os campos.")
-                elif not cargo_id_cliente:
-                    st.error("Cargo 'Cliente' não encontrado no banco.")
-                else:
-                    session = Session()
-                    try:
-                        existente = session.query(UserAnalise).filter_by(email=email).first()
-                        if existente:
-                            st.error("Email já cadastrado.")
-                        else:
-                            senha_hash = bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
-                            novo = UserAnalise(
-                                name=nome, email=email, whatsapp=whatsapp,
-                                password=senha_hash, is_verified=True,
-                                cargo_id=cargo_id_cliente,
-                            )
-                            session.add(novo)
-                            session.commit()
-                            st.success(f"Cliente '{nome}' cadastrado com sucesso!")
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro: {e}")
-                    finally:
-                        session.close()
+        # Upload de imagem fora do container/form para evitar erro
+        imagem = st.file_uploader("Imagem de Perfil", type=["png", "jpg", "jpeg"], key="cli_img")
+        if imagem:
+            st.image(imagem, caption="Pré-visualização", width=150)
+
+        if st.button("Cadastrar Cliente", key="btn_criar_cli"):
+            if not all([nome, email, whatsapp, senha]):
+                st.error("Preencha todos os campos.")
+            elif not cargo_id_cliente:
+                st.error("Cargo 'Cliente' não encontrado no banco.")
+            else:
+                session = Session()
+                try:
+                    existente = session.query(UserAnalise).filter_by(email=email).first()
+                    if existente:
+                        st.error("Email já cadastrado.")
+                    else:
+                        senha_hash = bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
+                        image_path = None
+                        if imagem and email:
+                            import os
+                            os.makedirs("./user_profiles/", exist_ok=True)
+                            image_path = f"./user_profiles/{email}.png"
+                            with open(image_path, "wb") as f:
+                                f.write(imagem.getbuffer())
+                        novo = UserAnalise(
+                            name=nome, email=email, whatsapp=whatsapp,
+                            password=senha_hash, is_verified=True,
+                            cargo_id=cargo_id_cliente,
+                            profile_image_path=image_path,
+                        )
+                        session.add(novo)
+                        session.commit()
+                        st.success(f"Cliente '{nome}' cadastrado com sucesso!")
+                except Exception as e:
+                    session.rollback()
+                    st.error(f"Erro: {e}")
+                finally:
+                    session.close()
 
     # --- EDITAR ---
     with tab_editar:
