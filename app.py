@@ -229,7 +229,10 @@ def autenticar_usuario(email, password):
             if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
                 return user
 
-        st.error("Credenciais inválidas ou conta não verificada.")
+            st.error("Senha incorreta.")
+            return None
+
+        st.error("E-mail não encontrado.")
         return None
     finally:
         session.close()
