@@ -174,7 +174,7 @@ def verificar_codigo(email, codigo):
             try:
                 user_fresh = session2.query(
                     UserAnalise).filter_by(email=email).first()
-                st.session_state.user = user_fresh
+                st.session_state.user_id = user_fresh.id
                 st.session_state.logged_in = True
                 st.session_state.codigo_confirmado = True
                 st.session_state.temp_email = None
@@ -275,7 +275,7 @@ def interface():
         if st.sidebar.button("Entrar"):
             user = autenticar_usuario(email, senha)
             if user:
-                st.session_state.user = user
+                st.session_state.user_id = user.id
                 st.session_state.logged_in = True
                 st.rerun()
 
@@ -389,7 +389,7 @@ def interface():
                             try:
                                 user_fresh = session2.query(
                                     UserAnalise).filter_by(email=st.session_state.temp_email).first()
-                                st.session_state.user = user_fresh
+                                st.session_state.user_id = user_fresh.id
                                 st.session_state.logged_in = True
                                 st.session_state.codigo_confirmado = True
                                 st.session_state.temp_email = None
@@ -599,10 +599,10 @@ def main():
         )
 
     else:
-        # Recarregar usuário em sessão ativa para evitar DetachedInstanceError
+        # Recarregar usuário em sessão ativa usando o ID salvo
         session = Session()
         try:
-            user = session.query(UserAnalise).get(st.session_state.user.id)
+            user = session.query(UserAnalise).get(st.session_state.user_id)
             if not user:
                 st.error("Usuário não encontrado.")
                 st.session_state.clear()

@@ -7,8 +7,8 @@ import bcrypt
 def render_configuracao(Session, UserAnalise, Cargo):
     st.header("⚙️ Configuração")
 
-    user = st.session_state.get("user")
-    if not user:
+    user_id = st.session_state.get("user_id")
+    if not user_id:
         st.error("Usuário não autenticado.")
         return
 
@@ -23,7 +23,7 @@ def render_configuracao(Session, UserAnalise, Cargo):
 
             session = Session()
             try:
-                u = session.query(UserAnalise).get(user.id)
+                u = session.query(UserAnalise).get(user_id)
                 if not u:
                     st.error("Usuário não encontrado.")
                     return
@@ -46,7 +46,7 @@ def render_configuracao(Session, UserAnalise, Cargo):
                             f.write(nova_imagem.getbuffer())
                         u.profile_image_path = path
                     session.commit()
-                    st.session_state.user = u
+                    st.session_state.user_id = u.id
                     st.success("Perfil atualizado!")
             except Exception as e:
                 session.rollback()
@@ -70,7 +70,7 @@ def render_configuracao(Session, UserAnalise, Cargo):
                 else:
                     session = Session()
                     try:
-                        u = session.query(UserAnalise).get(user.id)
+                        u = session.query(UserAnalise).get(user_id)
                         if u and bcrypt.checkpw(senha_atual.encode(), u.password.encode()):
                             u.password = bcrypt.hashpw(nova_senha.encode(), bcrypt.gensalt()).decode()
                             session.commit()
