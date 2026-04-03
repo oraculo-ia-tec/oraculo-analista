@@ -21,8 +21,16 @@ from PyPDF2 import PdfReader
 # Configurações iniciais
 # =========================
 
-GROQ_API_KEY = config("GROQ_API_KEY", default="")
-MODEL_NAME = config("GROQ_MODEL", default="llama-3.3-70b-versatile")
+def _get_secret(key, default=""):
+    """Tenta st.secrets (Streamlit Cloud), depois .env (local)."""
+    try:
+        return st.secrets[key]
+    except (KeyError, FileNotFoundError):
+        return config(key, default=default)
+
+
+GROQ_API_KEY = _get_secret("GROQ_API_KEY")
+MODEL_NAME = _get_secret("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 def validar_groq_config():
