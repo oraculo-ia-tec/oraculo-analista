@@ -122,6 +122,7 @@ def send_to_make_webhook(data: dict) -> bool:
 # Cadastro
 # =========================
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
+    email = email.strip().lower()
     session = Session()
     try:
         usuario_existente = session.query(
@@ -179,6 +180,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 # Verificação
 # =========================
 def verificar_codigo(email, codigo):
+    email = email.strip().lower()
     session = Session()
     try:
         user = session.query(UserAnalise).filter_by(email=email).first()
@@ -212,6 +214,7 @@ def verificar_codigo(email, codigo):
 # Login
 # =========================
 def autenticar_usuario(email, password):
+    email = email.strip().lower()
     session = Session()
     try:
         user = session.query(UserAnalise).filter_by(email=email).first()
@@ -248,6 +251,14 @@ def interface():
     st.sidebar.title("Oráculo Analista")
     menu_opcoes = ["Login", "Cadastrar"]
     opcao = st.sidebar.radio("Selecione:", menu_opcoes)
+
+    # Limpar estado de verificação ao trocar de aba
+    if "ultimo_opcao" not in st.session_state:
+        st.session_state.ultimo_opcao = opcao
+    if st.session_state.ultimo_opcao != opcao:
+        for k in ["temp_email", "verificacao_pos_login", "codigo_confirmado"]:
+            st.session_state.pop(k, None)
+        st.session_state.ultimo_opcao = opcao
 
     if opcao == "Cadastrar":
         nome = st.sidebar.text_input("Nome")
