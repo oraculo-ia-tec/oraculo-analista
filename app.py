@@ -280,7 +280,7 @@ def interface():
     menu_opcoes = ["Login", "Cadastrar"]
     opcao = st.sidebar.radio("Selecione:", menu_opcoes)
 
-    elif opcao == "Cadastrar":
+    if opcao == "Cadastrar":
         nome = st.sidebar.text_input("Nome")
         zap = st.sidebar.text_input("WhatsApp")
         email = st.sidebar.text_input("Email")
