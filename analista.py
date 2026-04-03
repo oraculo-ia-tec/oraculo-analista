@@ -166,9 +166,9 @@ def configurar_usuario_logado(user):
 
 
 def obter_avatar_usuario():
-    user = st.session_state.get("user")
-    if user and user.profile_image_path and os.path.exists(user.profile_image_path):
-        return user.profile_image_path
+    img = st.session_state.get("user_profile_image")
+    if img and os.path.exists(img):
+        return img
     return "./src/img/usuario.jpg"
 
 
@@ -413,7 +413,6 @@ def gerar_pdf_conversa(chat_text: list[dict]) -> bytes:
 # Interface principal
 # =========================
 def oraculo_analista():
-    atualizar_primeiro_nome()
 
     st.markdown(
         """

@@ -639,8 +639,9 @@ def main():
         finally:
             session.close()
 
-        # Salvar primeiro nome para saudação no chat
+        # Salvar dados do usuário para uso no chat
         st.session_state.primeiro_nome = user_name.split()[0] if user_name else "Usuário"
+        st.session_state.user_profile_image = user_profile_image
 
         # Permissões por cargo
         from views.permissoes import obter_paginas_por_cargo
