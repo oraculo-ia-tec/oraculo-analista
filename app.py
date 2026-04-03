@@ -239,37 +239,25 @@ def interface():
         if imagem:
             st.sidebar.image(imagem, caption="Pré-visualização", width=150)
 
-        # Buscar cargos do banco
-        cargos = []
+        # Cargo fixo: Cliente (cadastro público)
+        cargo_id = None
         try:
             _db_path = DATABASE_URL.replace("sqlite:///", "")
             conn = sqlite3.connect(_db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT id, nome FROM cargo")
-            cargos = cursor.fetchall()
+            cursor.execute("SELECT id FROM cargo WHERE nome = 'Cliente'")
+            row = cursor.fetchone()
+            if row:
+                cargo_id = row[0]
             conn.close()
         except Exception as e:
-            st.sidebar.error(f"Erro ao buscar cargos: {e}")
-
-        cargo_opcoes = {c_nome: c_id for c_id, c_nome in cargos}
-        default_index = 0
-        if cargos:
-            for idx, (c_id, c_nome) in enumerate(cargos):
-                if c_nome.lower() == "cliente":
-                    default_index = idx
-                    break
-            cargo_nome = st.sidebar.selectbox("Cargo", list(
-                cargo_opcoes.keys()), index=default_index)
-            cargo_id = cargo_opcoes[cargo_nome]
-        else:
-            cargo_nome = None
-            cargo_id = None
+            st.sidebar.error(f"Erro ao buscar cargo: {e}")
 
         if st.sidebar.button("Cadastrar"):
             if not nome or not zap or not email or not senha:
                 st.sidebar.error("Preencha todos os campos obrigatórios.")
             elif not cargo_id:
-                st.sidebar.error("Selecione um cargo.")
+                st.sidebar.error("Cargo 'Cliente' não encontrado no banco.")
             else:
                 cadastrar_usuario(
                     name=nome,
@@ -612,6 +600,19 @@ def main():
 
     else:
         user = st.session_state.user
+
+        # Obter nome do cargo
+        session = Session()
+        try:
+            cargo = session.query(Cargo).filter_by(id=user.cargo_id).first()
+            cargo_nome = cargo.nome if cargo else "Cliente"
+        finally:
+            session.close()
+
+        # Permissões por cargo
+        from views.permissoes import obter_paginas_por_cargo
+        paginas_permitidas = obter_paginas_por_cargo(cargo_nome)
+
         st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
 
         if user.profile_image_path and os.path.exists(user.profile_image_path):
@@ -621,27 +622,36 @@ def main():
 
         st.sidebar.write(f"Email: {user.email}")
         st.sidebar.write(f"WhatsApp: {user.whatsapp}")
+        st.sidebar.caption(f"Cargo: {cargo_nome}")
 
-        oraculo_analista()
+        # Menu de navegação
+        st.sidebar.markdown("---")
+        pagina = st.sidebar.radio("Navegação", paginas_permitidas)
 
         st.sidebar.markdown("---")
         if st.sidebar.button("🔓 Sair do sistema"):
-            for key in [
-                "user",
-                "logged_in",
-                "codigo_confirmado",
-                "temp_email",
-                "name",
-                "email",
-                "image",
-                "primeiro_nome",
-                "messages",
-                "full_content",
-            ]:
-                st.session_state.pop(key, None)
-
-            # st.experimental_set_query_params() removido pois não existe mais na versão atual do Streamlit
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
+
+        # Roteamento de páginas
+        if pagina == "Oráculo Analista":
+            oraculo_analista()
+        elif pagina == "Dashboard":
+            from views.dashboard import render_dashboard
+            render_dashboard(Session, UserAnalise, Cargo)
+        elif pagina == "Clientes":
+            from views.clientes import render_clientes
+            render_clientes(Session, UserAnalise, Cargo)
+        elif pagina == "Parceiros":
+            from views.parceiros import render_parceiros
+            render_parceiros(Session, UserAnalise, Cargo)
+        elif pagina == "Financeiro":
+            from views.financeiro import render_financeiro
+            render_financeiro(Session, UserAnalise, Cargo)
+        elif pagina == "Configuração":
+            from views.configuracao import render_configuracao
+            render_configuracao(Session, UserAnalise, Cargo)
 
 
 if __name__ == "__main__":
