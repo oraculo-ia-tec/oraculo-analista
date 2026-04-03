@@ -599,12 +599,23 @@ def main():
         )
 
     else:
-        user = st.session_state.user
-
-        # Obter nome do cargo
+        # Recarregar usuário em sessão ativa para evitar DetachedInstanceError
         session = Session()
         try:
-            cargo = session.query(Cargo).filter_by(id=user.cargo_id).first()
+            user = session.query(UserAnalise).get(st.session_state.user.id)
+            if not user:
+                st.error("Usuário não encontrado.")
+                st.session_state.clear()
+                st.rerun()
+            # Guardar atributos antes de fechar a sessão
+            user_id = user.id
+            user_name = user.name
+            user_email = user.email
+            user_whatsapp = user.whatsapp
+            user_cargo_id = user.cargo_id
+            user_profile_image = user.profile_image_path
+
+            cargo = session.query(Cargo).filter_by(id=user_cargo_id).first()
             cargo_nome = cargo.nome if cargo else "Cliente"
         finally:
             session.close()
@@ -613,15 +624,15 @@ def main():
         from views.permissoes import obter_paginas_por_cargo
         paginas_permitidas = obter_paginas_por_cargo(cargo_nome)
 
-        st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
+        st.sidebar.subheader(f"Bem-vindo(a), {user_name}")
 
-        if user.profile_image_path and os.path.exists(user.profile_image_path):
-            st.sidebar.image(user.profile_image_path, width=100)
+        if user_profile_image and os.path.exists(user_profile_image):
+            st.sidebar.image(user_profile_image, width=100)
         elif os.path.exists("./src/img/usuario.jpg"):
             st.sidebar.image("./src/img/usuario.jpg", width=100)
 
-        st.sidebar.write(f"Email: {user.email}")
-        st.sidebar.write(f"WhatsApp: {user.whatsapp}")
+        st.sidebar.write(f"Email: {user_email}")
+        st.sidebar.write(f"WhatsApp: {user_whatsapp}")
         st.sidebar.caption(f"Cargo: {cargo_nome}")
 
         # Menu de navegação
