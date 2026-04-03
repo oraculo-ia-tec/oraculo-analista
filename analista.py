@@ -24,9 +24,18 @@ from PyPDF2 import PdfReader
 def _get_secret(key, default=""):
     """Tenta st.secrets (Streamlit Cloud), depois .env (local)."""
     try:
-        return st.secrets[key]
-    except (KeyError, FileNotFoundError):
-        return config(key, default=default)
+        # Nível raiz: GROQ_API_KEY = "..."
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    try:
+        # Dentro de seção [groq]: [groq] \n GROQ_API_KEY = "..."
+        if "groq" in st.secrets and key in st.secrets["groq"]:
+            return st.secrets["groq"][key]
+    except Exception:
+        pass
+    return config(key, default=default)
 
 
 GROQ_API_KEY = _get_secret("GROQ_API_KEY")
