@@ -1,10 +1,12 @@
 import base64
+import json
 import logging
 import os
 from datetime import datetime
 from email.mime.text import MIMEText
 
 from decouple import AutoConfig
+from google.auth.exceptions import RefreshError
 
 try:
     import streamlit as st
@@ -26,11 +28,13 @@ GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 
 def get_setting(key: str, default=None):
-    """Lê configuração priorizando st.secrets e depois .env/os.environ."""
     if st is not None:
         try:
             if key in st.secrets:
-                return st.secrets[key]
+                value = st.secrets[key]
+                if hasattr(value, 'to_dict'):
+                    return value.to_dict()
+                return value
         except Exception:
             pass
 
@@ -46,46 +50,66 @@ def get_setting(key: str, default=None):
 
 class Notificador:
     """
-    Envia e-mails pela Gmail API usando credenciais vindas de st.secrets ou .env.
+    Envia e-mails pela Gmail API usando service account com delegação.
 
-    Chaves esperadas:
-    - GMAIL_SERVICE_ACCOUNT_FILE: caminho do JSON de service account
-      ou
-    - GMAIL_SERVICE_ACCOUNT_INFO: JSON completo em string
-    - GMAIL_DELEGATED_USER: conta Gmail remetente/delegada
-    - GMAIL_SENDER_EMAIL: opcional, e-mail exibido no cabeçalho From
+    Configuração esperada em st.secrets ou .env:
+    - GMAIL_DELEGATED_USER: e-mail do usuário Workspace a ser impersonado
+    - GMAIL_SENDER_EMAIL: opcional, remetente exibido no cabeçalho From
+    - GMAIL_SERVICE_ACCOUNT_INFO: JSON completo como string
+      ou tabela/dict em secrets.toml
+    - GMAIL_SERVICE_ACCOUNT_FILE: caminho do arquivo JSON (fallback)
+
+    Observação importante:
+    Service account com Gmail API exige Google Workspace + Domain-Wide Delegation.
+    Contas Gmail pessoais normalmente não funcionam com esse fluxo.
     """
 
     def __init__(self):
-        self.sender_email = get_setting('GMAIL_SENDER_EMAIL') or get_setting('GMAIL_DELEGATED_USER')
         self.delegated_user = get_setting('GMAIL_DELEGATED_USER')
-        self.service_account_file = get_setting('GMAIL_SERVICE_ACCOUNT_FILE')
+        self.sender_email = get_setting('GMAIL_SENDER_EMAIL') or self.delegated_user
         self.service_account_info = get_setting('GMAIL_SERVICE_ACCOUNT_INFO')
+        self.service_account_file = get_setting('GMAIL_SERVICE_ACCOUNT_FILE')
 
-    def _build_service(self):
-        if Credentials is None or build is None:
+    def _load_service_account_credentials(self):
+        if Credentials is None:
             raise RuntimeError(
                 'Dependências do Google API não instaladas. Adicione google-api-python-client e google-auth.'
             )
 
         credentials = None
 
-        if self.service_account_info:
-            import json
-            info = json.loads(self.service_account_info)
-            credentials = Credentials.from_service_account_info(info, scopes=GMAIL_SCOPES)
+        if isinstance(self.service_account_info, dict):
+            credentials = Credentials.from_service_account_info(
+                self.service_account_info,
+                scopes=GMAIL_SCOPES,
+            )
+        elif isinstance(self.service_account_info, str) and self.service_account_info.strip():
+            credentials = Credentials.from_service_account_info(
+                json.loads(self.service_account_info),
+                scopes=GMAIL_SCOPES,
+            )
         elif self.service_account_file:
-            credentials = Credentials.from_service_account_file(self.service_account_file, scopes=GMAIL_SCOPES)
+            credentials = Credentials.from_service_account_file(
+                self.service_account_file,
+                scopes=GMAIL_SCOPES,
+            )
         else:
             raise RuntimeError(
-                'Credenciais da Gmail API não configuradas. Informe GMAIL_SERVICE_ACCOUNT_FILE '
-                'ou GMAIL_SERVICE_ACCOUNT_INFO.'
+                'Credenciais da Gmail API não configuradas. Informe GMAIL_SERVICE_ACCOUNT_INFO '
+                'ou GMAIL_SERVICE_ACCOUNT_FILE.'
             )
 
-        if self.delegated_user:
-            credentials = credentials.with_subject(self.delegated_user)
+        if not self.delegated_user:
+            raise RuntimeError(
+                'GMAIL_DELEGATED_USER não configurado. Para Gmail API com service account, '
+                'é necessário informar o usuário Workspace a ser delegado.'
+            )
 
-        return build('gmail', 'v1', credentials=credentials)
+        return credentials.with_subject(self.delegated_user)
+
+    def _build_service(self):
+        credentials = self._load_service_account_credentials()
+        return build('gmail', 'v1', credentials=credentials, cache_discovery=False)
 
     def enviar_email(self, destino, assunto, mensagem):
         if not self.sender_email:
@@ -105,9 +129,21 @@ class Notificador:
             service.users().messages().send(userId='me', body=body).execute()
             LOGGER.info('Email enviado para %s', destino)
             return True
+
+        except RefreshError as e:
+            error_text = str(e)
+            if 'unauthorized_client' in error_text.lower():
+                raise RuntimeError(
+                    'Google API retornou unauthorized_client. Isso normalmente indica que a service account '
+                    'não está autorizada para Domain-Wide Delegation no Google Workspace, que o escopo '
+                    'https://www.googleapis.com/auth/gmail.send não foi autorizado no Admin Console, ou que '
+                    'o usuário delegado não pertence ao domínio Workspace autorizado.'
+                ) from e
+            raise RuntimeError(f'Falha de autenticação na Google API: {e}') from e
+
         except Exception as e:
-            LOGGER.error('Erro ao enviar email: %s', e)
-            raise
+            LOGGER.exception('Erro inesperado ao enviar e-mail para %s', destino)
+            raise RuntimeError(f'Erro inesperado ao enviar e-mail para {destino}: {e}') from e
 
     def enviar_confirmacao_agendamento(self, nome, email, data, hora):
         assunto = 'Confirmação de Agendamento - Oráculo Analista'
