@@ -1,119 +1,150 @@
-import os
 import base64
 import logging
-from email.mime.multipart import MIMEMultipart
+import os
+from datetime import datetime
 from email.mime.text import MIMEText
-from typing import List
 
-import streamlit as st
+from decouple import AutoConfig
 
 try:
-    from google.oauth2.credentials import Credentials
+    import streamlit as st
+except Exception:
+    st = None
+
+try:
+    from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError(
-        "Dependências da Gmail API não instaladas. "
-        "Adicione ao requirements.txt: "
-        "google-api-python-client, google-auth, "
-        "google-auth-oauthlib, google-auth-httplib2"
-    ) from e
+except Exception:
+    Credentials = None
+    build = None
+
 
 logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
+config = AutoConfig(search_path='.')
+GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+
+
+def get_setting(key: str, default=None):
+    """Lê configuração priorizando st.secrets e depois .env/os.environ."""
+    if st is not None:
+        try:
+            if key in st.secrets:
+                return st.secrets[key]
+        except Exception:
+            pass
+
+    try:
+        value = config(key, default=None)
+        if value is not None:
+            return value
+    except Exception:
+        pass
+
+    return os.getenv(key, default)
 
 
 class Notificador:
+    """
+    Envia e-mails pela Gmail API usando credenciais vindas de st.secrets ou .env.
+
+    Chaves esperadas:
+    - GMAIL_SERVICE_ACCOUNT_FILE: caminho do JSON de service account
+      ou
+    - GMAIL_SERVICE_ACCOUNT_INFO: JSON completo em string
+    - GMAIL_DELEGATED_USER: conta Gmail remetente/delegada
+    - GMAIL_SENDER_EMAIL: opcional, e-mail exibido no cabeçalho From
+    """
+
     def __init__(self):
-        email_secrets = st.secrets["email"] if "email" in st.secrets else {}
-
-        self.google_client_id = email_secrets.get(
-            "GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_CLIENT_ID")
-        self.google_client_secret = email_secrets.get(
-            "GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET")
-        self.google_refresh_token = email_secrets.get(
-            "GMAIL_REFRESH_TOKEN") or os.getenv("GMAIL_REFRESH_TOKEN")
-        self.google_oauth_scopes_raw = email_secrets.get(
-            "GOOGLE_OAUTH_SCOPES") or os.getenv("GOOGLE_OAUTH_SCOPES", "")
-        self.login = email_secrets.get(
-            "EMAIL_REMETENTE") or os.getenv("EMAIL_REMETENTE")
-
-        self.google_scopes = self._load_scopes()
-
-    def _load_scopes(self) -> List[str]:
-        if self.google_oauth_scopes_raw.strip():
-            scopes = [
-                scope.strip()
-                for scope in self.google_oauth_scopes_raw.split()
-                if scope.strip()
-            ]
-            return scopes
-
-        return ["https://www.googleapis.com/auth/gmail.send"]
-
-    def _validate_settings(self) -> None:
-        faltantes = [
-            nome for nome, valor in {
-                "GOOGLE_CLIENT_ID": self.google_client_id,
-                "GOOGLE_CLIENT_SECRET": self.google_client_secret,
-                "GMAIL_REFRESH_TOKEN": self.google_refresh_token,
-            }.items() if not valor
-        ]
-
-        if faltantes:
-            raise RuntimeError(
-                f"Variáveis obrigatórias ausentes para Gmail API: {', '.join(faltantes)}"
-            )
-
-    def _build_credentials(self) -> Credentials:
-        self._validate_settings()
-
-        return Credentials(
-            token=None,
-            refresh_token=self.google_refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=self.google_client_id,
-            client_secret=self.google_client_secret,
-            scopes=self.google_scopes,
-        )
+        self.sender_email = get_setting('GMAIL_SENDER_EMAIL') or get_setting('GMAIL_DELEGATED_USER')
+        self.delegated_user = get_setting('GMAIL_DELEGATED_USER')
+        self.service_account_file = get_setting('GMAIL_SERVICE_ACCOUNT_FILE')
+        self.service_account_info = get_setting('GMAIL_SERVICE_ACCOUNT_INFO')
 
     def _build_service(self):
-        creds = self._build_credentials()
-        return build("gmail", "v1", credentials=creds)
+        if Credentials is None or build is None:
+            raise RuntimeError(
+                'Dependências do Google API não instaladas. Adicione google-api-python-client e google-auth.'
+            )
 
-    def enviar_email(self, destino: str, assunto: str, mensagem: str) -> dict:
+        credentials = None
+
+        if self.service_account_info:
+            import json
+            info = json.loads(self.service_account_info)
+            credentials = Credentials.from_service_account_info(info, scopes=GMAIL_SCOPES)
+        elif self.service_account_file:
+            credentials = Credentials.from_service_account_file(self.service_account_file, scopes=GMAIL_SCOPES)
+        else:
+            raise RuntimeError(
+                'Credenciais da Gmail API não configuradas. Informe GMAIL_SERVICE_ACCOUNT_FILE '
+                'ou GMAIL_SERVICE_ACCOUNT_INFO.'
+            )
+
+        if self.delegated_user:
+            credentials = credentials.with_subject(self.delegated_user)
+
+        return build('gmail', 'v1', credentials=credentials)
+
+    def enviar_email(self, destino, assunto, mensagem):
+        if not self.sender_email:
+            raise RuntimeError('GMAIL_SENDER_EMAIL ou GMAIL_DELEGATED_USER não configurado.')
+
         try:
             service = self._build_service()
 
-            mime_message = MIMEMultipart()
-            mime_message["To"] = destino
-            mime_message["From"] = self.login or "me"
-            mime_message["Subject"] = assunto
-            mime_message.attach(MIMEText(mensagem, "html", "utf-8"))
+            msg = MIMEText(mensagem, 'html', 'utf-8')
+            msg['to'] = destino
+            msg['from'] = self.sender_email
+            msg['subject'] = assunto
 
-            raw_message = base64.urlsafe_b64encode(
-                mime_message.as_bytes()
-            ).decode("utf-8")
+            raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+            body = {'raw': raw_message}
 
-            body = {"raw": raw_message}
-
-            response = (
-                service.users()
-                .messages()
-                .send(userId="me", body=body)
-                .execute()
-            )
-
-            logging.info(
-                f"E-mail enviado com sucesso para {destino}. ID: {response.get('id')}")
-            return response
-
-        except HttpError as e:
-            logging.exception(
-                f"Erro HTTP da Gmail API ao enviar para {destino}: {e}")
-            raise RuntimeError(
-                f"Erro da Gmail API ao enviar e-mail: {e}") from e
-
+            service.users().messages().send(userId='me', body=body).execute()
+            LOGGER.info('Email enviado para %s', destino)
+            return True
         except Exception as e:
-            logging.exception(
-                f"Erro inesperado ao enviar e-mail para {destino}: {e}")
-            raise RuntimeError(f"Falha no envio de e-mail: {e}") from e
+            LOGGER.error('Erro ao enviar email: %s', e)
+            raise
+
+    def enviar_confirmacao_agendamento(self, nome, email, data, hora):
+        assunto = 'Confirmação de Agendamento - Oráculo Analista'
+        mensagem = f"""
+        <h3>Olá {nome},</h3>
+        <p>Seu agendamento foi confirmado para <strong>{data}</strong> às <strong>{hora}</strong>.</p>
+        <p>Nos vemos em breve!</p>
+        """
+        self.enviar_email(email, assunto, mensagem)
+
+    def enviar_confirmacao_pagamento(self, nome, email, plano):
+        assunto = 'Pagamento Confirmado - Oráculo Analista'
+        mensagem = f"""
+        <h3>Olá {nome},</h3>
+        <p>Seu pagamento do plano <strong>{plano}</strong> foi confirmado com sucesso.</p>
+        <p>Você já pode acessar o Oráculo Analista com todos os recursos liberados.</p>
+        """
+        self.enviar_email(email, assunto, mensagem)
+
+
+class WhatsAppSimulado:
+    def __init__(self):
+        self.envios = []
+
+    def enviar_mensagem(self, numero, mensagem):
+        envio = {
+            'para': numero,
+            'mensagem': mensagem,
+            'data': datetime.now().isoformat()
+        }
+        self.envios.append(envio)
+        LOGGER.info('Mensagem enviada para %s: %s', numero, mensagem)
+
+    def confirmar_pagamento_upgrade(self, nome, numero, plano):
+        mensagem = f'Olá {nome}, seu pagamento do plano {plano} foi confirmado. Acesso liberado ao Oráculo Analista.'
+        self.enviar_mensagem(numero, mensagem)
+
+    def confirmar_agendamento(self, nome, numero, data, hora):
+        mensagem = f'Olá {nome}, seu agendamento foi confirmado para {data} às {hora}. Estamos esperando você!'
+        self.enviar_mensagem(numero, mensagem)

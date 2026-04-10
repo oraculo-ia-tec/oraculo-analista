@@ -1,76 +1,135 @@
 import os
 import random
-import shutil
 import string
 
 import bcrypt
 import requests
 import streamlit as st
-import sqlite3
 from decouple import AutoConfig
 from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+from notification import Notificador
+from analista import oraculo_analista
 
 
 # =========================
 # Configurações
 # =========================
-config = AutoConfig()
-DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo_analista.db")
-WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
-VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
+config = AutoConfig(search_path='.')
 
-# No Streamlit Cloud o diretório /mount/src/ é read-only.
-# Copia o banco para /tmp/ se necessário para permitir escrita.
-if DATABASE_URL.startswith("sqlite:///") and not DATABASE_URL.startswith("sqlite:////"):
-    _db_file = DATABASE_URL.replace("sqlite:///", "")
-    _db_abs = os.path.abspath(_db_file)
-    _db_dir = os.path.dirname(_db_abs)
-    if os.path.exists(_db_abs) and not os.access(_db_dir, os.W_OK):
-        _tmp_path = os.path.join("/tmp", os.path.basename(_db_abs))
-        if not os.path.exists(_tmp_path):
-            shutil.copy2(_db_abs, _tmp_path)
-        DATABASE_URL = f"sqlite:///{_tmp_path}"
 
+def get_setting(key: str, default=None):
+    """Resolve configurações com prioridade para st.secrets e fallback local."""
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+
+    try:
+        value = config(key, default=None)
+        if value is not None:
+            return value
+    except Exception:
+        pass
+
+    return os.getenv(key, default)
+
+
+DATABASE_URL = get_setting('DATABASE_URL', 'sqlite:///oraculo_analista.db')
+WEBHOOK_CADASTRO_ANALISTA = get_setting(
+    'WEBHOOK_CADASTRO_ANALISTA', default='')
+VIDEO_PATH = get_setting(
+    'VIDEO_PATH', default='src/video/oraculo-analista.mp4')
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={'check_same_thread': False} if str(
+        DATABASE_URL).startswith('sqlite') else {},
+)
+Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
-PROFILE_IMAGES_DIR = "./user_profiles/"
+PROFILE_IMAGES_DIR = './user_profiles/'
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
-
-
-@st.cache_resource
-def get_engine():
-    return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-
-@st.cache_resource
-def get_session_factory():
-    return sessionmaker(bind=get_engine())
-
-
-@st.cache_resource
-def init_db():
-    Base.metadata.create_all(get_engine())
-
-
-@st.cache_data
-def load_video(path: str) -> bytes:
-    with open(path, "rb") as f:
-        return f.read()
 
 
 # =========================
 # Modelos
 # =========================
+class UserAdmin(Base):
+    __tablename__ = 'user_admin'
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    cpf_cnpj = Column(String(20))
+    email = Column(String(254), unique=True, nullable=False)
+    whatsapp = Column(String(15))
+    endereco = Column(String(255))
+    cep = Column(String(10))
+    bairro = Column(String(100))
+    cidade = Column(String(100))
+    username = Column(String(50))
+    password = Column(String(128))
+    image = Column(String(100))
+    created_at = Column(String(50))
+    created_time = Column(String(50))
+    deleted_at = Column(String(50))
+    deleted_time = Column(String(50))
+    cargo_id = Column(BigInteger, ForeignKey('cargo.id'))
+    decisao = Column(Boolean)
+    culto_id = Column(BigInteger)
+    estado_civil = Column(String(20))
+    filhos = Column(Integer)
+
+
+class Enquete(Base):
+    __tablename__ = 'enquete'
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    titulo = Column(String(200))
+    descricao = Column(String)
+    data_inicio = Column(String)
+    data_fim = Column(String)
+    ativo = Column(Boolean)
+    opcao1 = Column(String(200))
+    opcao2 = Column(String(200))
+    opcao3 = Column(String(200))
+    opcao4 = Column(String(200))
+    created_dt = Column(String)
+    updated_dt = Column(String)
+    cargo_id = Column(BigInteger, ForeignKey('cargo.id'))
+
+
+class RespostaEnquete(Base):
+    __tablename__ = 'resposta_enquete'
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    resposta = Column(String(255))
+    explicacao = Column(String)
+    enquete_id = Column(BigInteger, ForeignKey('enquete.id'))
+    usuario_id = Column(BigInteger, ForeignKey('user_analise.id'))
+
+
+class DirecionadoEnquete(Base):
+    __tablename__ = 'direcionado_enquete'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    enquete_id = Column(BigInteger, ForeignKey('enquete.id'))
+    cargo_id = Column(BigInteger, ForeignKey('cargo.id'))
+
+
 class Cargo(Base):
-    __tablename__ = "cargo"
+    __tablename__ = 'cargo'
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     nome = Column(String(50), nullable=False, unique=True)
 
 
 class UserAnalise(Base):
-    __tablename__ = "user_analise"
+    __tablename__ = 'user_analise'
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
@@ -80,33 +139,44 @@ class UserAnalise(Base):
     profile_image_path = Column(String(500), nullable=True)
     verification_code = Column(String(6), nullable=True)
     is_verified = Column(Boolean, default=False)
-    cargo_id = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
+    cargo_id = Column(BigInteger, ForeignKey('cargo.id'), nullable=False)
 
 
-init_db()
-Session = get_session_factory()
+Base.metadata.create_all(engine)
 
 
 # =========================
 # Utilitários
 # =========================
 def gerar_codigo_verificacao(tamanho: int = 6) -> str:
-    return "".join(random.choices(string.digits, k=tamanho))
+    return ''.join(random.choices(string.digits, k=tamanho))
+
+
+def normalize_email(value: str) -> str:
+    value = (value or '').strip()
+    if value.startswith('[') and 'mailto:' in value:
+        try:
+            value = value.split('mailto:', 1)[1].split(')', 1)[0]
+        except Exception:
+            pass
+    return value.lower()
 
 
 def save_profile_image(image, user_email: str) -> str | None:
     if image is None:
         return None
 
-    path = os.path.join(PROFILE_IMAGES_DIR, f"{user_email}.png")
-    with open(path, "wb") as f:
+    safe_email = normalize_email(user_email).replace(
+        '/', '_').replace('\\', '_')
+    path = os.path.join(PROFILE_IMAGES_DIR, f'{safe_email}.png')
+    with open(path, 'wb') as f:
         f.write(image.getbuffer())
     return path
 
 
 def send_to_make_webhook(data: dict) -> bool:
     if not WEBHOOK_CADASTRO_ANALISTA:
-        st.error("Webhook não configurado.")
+        st.error('Webhook não configurado.')
         return False
 
     try:
@@ -114,7 +184,7 @@ def send_to_make_webhook(data: dict) -> bool:
             WEBHOOK_CADASTRO_ANALISTA, json=data, timeout=20)
         return response.status_code == 200
     except Exception as e:
-        st.error(f"Erro webhook: {e}")
+        st.error(f'Erro webhook: {e}')
         return False
 
 
@@ -122,13 +192,12 @@ def send_to_make_webhook(data: dict) -> bool:
 # Cadastro
 # =========================
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
-    email = email.strip().lower()
     session = Session()
     try:
-        usuario_existente = session.query(
-            UserAnalise).filter_by(email=email).first()
-        if usuario_existente:
-            st.error("E-mail já cadastrado.")
+        email = normalize_email(email)
+
+        if session.query(UserAnalise).filter_by(email=email).first():
+            st.error('E-mail já cadastrado.')
             return False
 
         image_path = save_profile_image(profile_image, email)
@@ -136,9 +205,9 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         senha_hash = bcrypt.hashpw(
             password.encode(), bcrypt.gensalt()).decode()
 
-        novo_usuario = UserAnalise(
-            name=name,
-            whatsapp=whatsapp,
+        novo = UserAnalise(
+            name=name.strip(),
+            whatsapp=whatsapp.strip(),
             email=email,
             password=senha_hash,
             profile_image_path=image_path,
@@ -147,31 +216,36 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
             cargo_id=cargo_id,
         )
 
-        session.add(novo_usuario)
+        session.add(novo)
         session.commit()
 
-        from notification import Notificador
-        notificador = Notificador()
-
-        assunto = "Código de Verificação - Oráculo Analista"
-        mensagem = f"""
-        <h3>Olá, {name}</h3>
-        <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
-        <p>Use este código para ativar sua conta.</p>
-        """
-
-        notificador.enviar_email(email, assunto, mensagem)
+        try:
+            notificador = Notificador()
+            assunto = 'Código de Verificação - Oráculo Analista'
+            mensagem = f"""
+            <h3>Olá {name},</h3>
+            <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
+            <p>Use este código para ativar sua conta.</p>
+            """
+            notificador.enviar_email(email, assunto, mensagem)
+        except Exception:
+            st.warning(
+                'Cadastro realizado, mas houve falha no envio do e-mail de verificação.')
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
-        st.success("Cadastro realizado. Verifique o código enviado por e-mail.")
+        st.success('Cadastro realizado. Verifique o código enviado por e-mail.')
         return True
 
+    except OperationalError:
+        session.rollback()
+        st.error(
+            'Banco de dados sem permissão de escrita. Verifique DATABASE_URL e as permissões do SQLite.')
+        return False
     except Exception as e:
         session.rollback()
-        st.error(f"Erro no cadastro/envio do código: {e}")
+        st.error(f'Erro ao cadastrar: {e}')
         return False
-
     finally:
         session.close()
 
@@ -180,9 +254,9 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 # Verificação
 # =========================
 def verificar_codigo(email, codigo):
-    email = email.strip().lower()
     session = Session()
     try:
+        email = normalize_email(email)
         user = session.query(UserAnalise).filter_by(email=email).first()
 
         if user and user.verification_code == codigo:
@@ -194,7 +268,7 @@ def verificar_codigo(email, codigo):
             try:
                 user_fresh = session2.query(
                     UserAnalise).filter_by(email=email).first()
-                st.session_state.user_id = user_fresh.id
+                st.session_state.user = user_fresh
                 st.session_state.logged_in = True
                 st.session_state.codigo_confirmado = True
                 st.session_state.temp_email = None
@@ -204,7 +278,7 @@ def verificar_codigo(email, codigo):
 
             return True
 
-        st.error("Código incorreto.")
+        st.error('Código incorreto.')
         return False
     finally:
         session.close()
@@ -214,16 +288,16 @@ def verificar_codigo(email, codigo):
 # Login
 # =========================
 def autenticar_usuario(email, password):
-    email = email.strip().lower()
     session = Session()
     try:
+        email = normalize_email(email)
         user = session.query(UserAnalise).filter_by(email=email).first()
 
         if user:
             if not user.is_verified:
                 st.warning(
-                    "Sua conta ainda não foi verificada. "
-                    "Por favor, insira o código de verificação enviado para seu e-mail."
+                    'Sua conta ainda não foi verificada. '
+                    'Por favor, insira o código de verificação enviado para seu e-mail.'
                 )
                 st.session_state.temp_email = user.email
                 st.session_state.verificacao_pos_login = True
@@ -232,10 +306,7 @@ def autenticar_usuario(email, password):
             if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
                 return user
 
-            st.error("Senha incorreta.")
-            return None
-
-        st.error("E-mail não encontrado.")
+        st.error('Credenciais inválidas ou conta não verificada.')
         return None
     finally:
         session.close()
@@ -245,232 +316,162 @@ def autenticar_usuario(email, password):
 # Interface de autenticação
 # =========================
 def interface():
-    if st.session_state.get("logged_in"):
+    if st.session_state.get('logged_in'):
         return
 
-    st.sidebar.title("Oráculo Analista")
-    menu_opcoes = ["Login", "Cadastrar"]
-    opcao = st.sidebar.radio("Selecione:", menu_opcoes)
+    st.sidebar.title('Oráculo Analista')
+    opcao = st.sidebar.radio('Selecione:', ['Login', 'Cadastrar'])
 
-    # Limpar estado de verificação ao trocar de aba
-    if "ultimo_opcao" not in st.session_state:
-        st.session_state.ultimo_opcao = opcao
-    if st.session_state.ultimo_opcao != opcao:
-        for k in ["temp_email", "verificacao_pos_login", "codigo_confirmado"]:
-            st.session_state.pop(k, None)
-        st.session_state.ultimo_opcao = opcao
-
-    if opcao == "Cadastrar":
-        nome = st.sidebar.text_input("Nome")
-        zap = st.sidebar.text_input("WhatsApp")
-        email = st.sidebar.text_input("Email")
-        senha = st.sidebar.text_input("Senha", type="password")
+    if opcao == 'Cadastrar':
+        nome = st.sidebar.text_input('Nome')
+        zap = st.sidebar.text_input('WhatsApp')
+        email = st.sidebar.text_input('Email')
+        senha = st.sidebar.text_input('Senha', type='password')
         imagem = st.sidebar.file_uploader(
-            "Imagem de Perfil", type=["png", "jpg", "jpeg"])
+            'Imagem de Perfil', type=['png', 'jpg', 'jpeg'])
 
         if imagem:
-            st.sidebar.image(imagem, caption="Pré-visualização", width=150)
+            st.sidebar.image(imagem, caption='Pré-visualização', width=150)
 
-        # Cargo fixo: Cliente (cadastro público)
-        cargo_id = None
+        cargos = []
+        session = Session()
         try:
-            _db_path = DATABASE_URL.replace("sqlite:///", "")
-            conn = sqlite3.connect(_db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM cargo WHERE nome = 'Cliente'")
-            row = cursor.fetchone()
-            if row:
-                cargo_id = row[0]
-            conn.close()
+            cargos = session.query(Cargo).order_by(Cargo.nome.asc()).all()
         except Exception as e:
-            st.sidebar.error(f"Erro ao buscar cargo: {e}")
+            st.sidebar.error(f'Erro ao buscar cargos: {e}')
+        finally:
+            session.close()
 
-        if st.sidebar.button("Cadastrar"):
-            if not nome or not zap or not email or not senha:
-                st.sidebar.error("Preencha todos os campos obrigatórios.")
-            elif not cargo_id:
-                st.sidebar.error("Cargo 'Cliente' não encontrado no banco.")
-            else:
-                cadastrar_usuario(
-                    name=nome,
-                    whatsapp=zap,
-                    email=email,
-                    password=senha,
-                    profile_image=imagem,
-                    cargo_id=cargo_id,
-                )
+        cargo_opcoes = {cargo.nome: cargo.id for cargo in cargos}
+        default_index = 0
+        if cargos:
+            nomes_cargos = list(cargo_opcoes.keys())
+            for idx, cargo in enumerate(cargos):
+                if cargo.nome.lower() == 'cliente':
+                    default_index = idx
+                    break
+            cargo_nome = st.sidebar.selectbox(
+                'Cargo', nomes_cargos, index=default_index)
+            cargo_id = cargo_opcoes[cargo_nome]
+        else:
+            cargo_nome = None
+            cargo_id = None
 
-    elif opcao == "Login":
-        email = st.sidebar.text_input("Email")
-        senha = st.sidebar.text_input("Senha", type="password")
+        if st.sidebar.button('Cadastrar'):
+            erro = False
+            if not nome:
+                st.sidebar.error('Preencha o campo Nome.')
+                erro = True
+            if not zap:
+                st.sidebar.error('Preencha o campo WhatsApp.')
+                erro = True
+            if not email:
+                st.sidebar.error('Preencha o campo Email.')
+                erro = True
+            if not senha:
+                st.sidebar.error('Preencha o campo Senha.')
+                erro = True
+            if not imagem:
+                st.sidebar.error('Selecione uma Imagem de Perfil.')
+                erro = True
+            if cargo_id is None:
+                st.sidebar.error('Selecione um Cargo.')
+                erro = True
+            if not erro:
+                cadastrar_usuario(nome, zap, email, senha, imagem, cargo_id)
 
-        if st.sidebar.button("Entrar"):
+    elif opcao == 'Login':
+        email = st.sidebar.text_input('Email')
+        senha = st.sidebar.text_input('Senha', type='password')
+
+        if st.sidebar.button('Entrar'):
             user = autenticar_usuario(email, senha)
             if user:
-                st.session_state.user_id = user.id
+                st.session_state.user = user
                 st.session_state.logged_in = True
                 st.rerun()
 
-    if "temp_email" in st.session_state and not st.session_state.get("codigo_confirmado"):
+    if 'temp_email' in st.session_state and not st.session_state.get('codigo_confirmado'):
         with st.sidebar:
-            if st.session_state.get("verificacao_pos_login"):
+            if st.session_state.get('verificacao_pos_login'):
                 st.warning(
-                    "Sua conta ainda não foi verificada. "
-                    "Por favor, insira o código de verificação enviado para seu e-mail."
+                    'Sua conta ainda não foi verificada. '
+                    'Por favor, insira o código de verificação enviado para seu e-mail.'
                 )
-                if st.button("Reenviar Código", key="reenviar_codigo_login"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
-
-                        if not user:
-                            st.error(
-                                "Usuário não encontrado para reenvio do código.")
-                        else:
-                            novo_codigo = gerar_codigo_verificacao()
-                            user.verification_code = novo_codigo
-                            session.commit()
-
-                            from notification import Notificador
-                            notificador = Notificador()
-
-                            assunto = "Código de Verificação - Oráculo Analista"
-                            mensagem = f"""
-                            <h3>Olá, {user.name}</h3>
-                            <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
-                            <p>Use este código para ativar sua conta.</p>
-                            """
-
-                            notificador.enviar_email(
-                                user.email, assunto, mensagem)
-                            st.success(
-                                "Código reenviado com sucesso! Verifique seu e-mail.")
-
-                    except Exception as e:
-                        session.rollback()
-                        st.error(
-                            f"Erro ao reenviar e-mail de verificação: {e}")
-
-                    finally:
-                        session.close()
-
                 codigo = st.text_input(
-                    "Código de Verificação", key="codigo_login")
-                if st.button("Confirmar Código", key="confirmar_codigo_login"):
+                    'Código de Verificação', key='codigo_login')
+                if st.button('Confirmar Código', key='confirmar_codigo_login'):
                     verificar_codigo(st.session_state.temp_email, codigo)
             else:
                 st.info(
-                    f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
-                if st.button("Reenviar Código"):
+                    f'Digite o código de verificação enviado para {st.session_state.temp_email}.')
+                if st.button('Reenviar Código'):
                     session = Session()
                     try:
                         user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
+                            email=normalize_email(st.session_state.temp_email)
                         ).first()
-
-                        if not user:
-                            st.error(
-                                "Usuário não encontrado para reenvio do código.")
-                        else:
-                            novo_codigo = gerar_codigo_verificacao()
-                            user.verification_code = novo_codigo
+                        if user:
+                            user.verification_code = gerar_codigo_verificacao()
                             session.commit()
-
-                            from notification import Notificador
-                            notificador = Notificador()
-
-                            assunto = "Código de Verificação - Oráculo Analista"
-                            mensagem = f"""
-                            <h3>Olá, {user.name}</h3>
-                            <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
-                            <p>Use este código para ativar sua conta.</p>
-                            """
-
-                            notificador.enviar_email(
-                                user.email, assunto, mensagem)
-                            st.success(
-                                "Código reenviado com sucesso! Verifique seu e-mail.")
-
-                    except Exception as e:
-                        session.rollback()
-                        st.error(
-                            f"Erro ao reenviar e-mail de verificação: {e}")
-
+                            try:
+                                notificador = Notificador()
+                                assunto = 'Código de Verificação - Oráculo Analista'
+                                mensagem = f"""
+                                <h3>Olá {user.name},</h3>
+                                <p>Seu novo código de verificação para o Oráculo Analista é: <strong>{user.verification_code}</strong></p>
+                                <p>Use este código para ativar sua conta.</p>
+                                """
+                                notificador.enviar_email(
+                                    user.email, assunto, mensagem)
+                                st.success(
+                                    'Código reenviado com sucesso! Verifique seu e-mail.')
+                            except Exception:
+                                st.error(
+                                    'Não foi possível reenviar o e-mail de verificação agora.')
                     finally:
                         session.close()
 
                 codigo = st.text_input(
-                    "Código de Verificação", key="codigo_cadastro")
-                if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
+                    'Código de Verificação', key='codigo_cadastro')
+                if st.button('Confirmar Código', key='confirmar_codigo_cadastro'):
+                    verificar_codigo(st.session_state.temp_email, codigo)
 
-                        if not user:
-                            st.error("Usuário não encontrado.")
-                        elif codigo != user.verification_code:
-                            st.error("Código de verificação inválido.")
-                        else:
-                            user.is_verified = True
-                            user.verification_code = None
-                            session.commit()
-
-                            session2 = Session()
-                            try:
-                                user_fresh = session2.query(
-                                    UserAnalise).filter_by(email=st.session_state.temp_email).first()
-                                st.session_state.user_id = user_fresh.id
-                                st.session_state.logged_in = True
-                                st.session_state.codigo_confirmado = True
-                                st.session_state.temp_email = None
-                                st.rerun()
-                            finally:
-                                session2.close()
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao confirmar código: {e}")
-                    finally:
-                        session.close()
-
-    if "verificar_pagamento" not in st.session_state:
+    if 'verificar_pagamento' not in st.session_state:
         st.session_state.verificar_pagamento = False
 
     if st.session_state.verificar_pagamento:
-        st.markdown("### 🔒 Verificação de Pagamento do Plano")
+        st.markdown('### 🔒 Verificação de Pagamento do Plano')
         email_verificacao = st.text_input(
-            "Digite seu e-mail de cadastro:", key="email_verif")
+            'Digite seu e-mail de cadastro:', key='email_verif')
 
-        if st.button("Verificar Status de Pagamento"):
+        if st.button('Verificar Status de Pagamento'):
             try:
                 response = requests.get(
-                    "http://localhost:8000/verificar-pagamento",
-                    params={"email": email_verificacao},
+                    'http://localhost:8000/verificar-pagamento',
+                    params={'email': email_verificacao},
                     timeout=20,
                 )
 
                 if response.status_code == 200:
                     dados = response.json()
-                    if dados["status"] == "confirmado":
+                    if dados['status'] == 'confirmado':
                         st.success(
-                            "✅ Pagamento confirmado! Código de verificação:")
-                        st.code(dados["codigo_verificacao"])
+                            '✅ Pagamento confirmado! Código de verificação:')
+                        st.code(dados['codigo_verificacao'])
                     else:
-                        st.warning(dados["mensagem"])
+                        st.warning(dados['mensagem'])
                 else:
-                    st.error("❌ Não foi possível verificar o pagamento.")
+                    st.error('❌ Não foi possível verificar o pagamento.')
             except Exception as e:
-                st.error(f"Erro ao conectar com a API: {e}")
+                st.error(f'Erro ao conectar com a API: {e}')
 
 
 # =========================
 # Landing / principal
 # =========================
 def main():
-    if not st.session_state.get("logged_in"):
+    if not st.session_state.get('logged_in'):
         interface()
 
         st.markdown(
@@ -504,10 +505,10 @@ def main():
             unsafe_allow_html=True,
         )
 
-        if os.path.exists("./src/img/oraculo-analista.jpg"):
-            st.image("./src/img/oraculo-analista.jpg", width=700)
+        if os.path.exists('./src/img/oraculo-analista.jpg'):
+            st.image('./src/img/oraculo-analista.jpg', width=700)
 
-        st.markdown("---")
+        st.markdown('---')
 
         col1, col2 = st.columns(2)
         with col1:
@@ -538,7 +539,7 @@ def main():
                 unsafe_allow_html=True,
             )
 
-        st.markdown("---")
+        st.markdown('---')
 
         col3, col4 = st.columns(2)
         with col3:
@@ -573,7 +574,7 @@ def main():
                 unsafe_allow_html=True,
             )
 
-        st.markdown("---")
+        st.markdown('---')
 
         col5, col6 = st.columns(2)
         with col5:
@@ -604,7 +605,7 @@ def main():
                 unsafe_allow_html=True,
             )
 
-        st.markdown("---")
+        st.markdown('---')
         st.markdown(
             "<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
         st.markdown(
@@ -618,92 +619,53 @@ def main():
             unsafe_allow_html=True,
         )
 
-        st.markdown("---")
+        st.markdown('---')
         st.markdown(
             "<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
 
         if os.path.exists(VIDEO_PATH):
-            st.sidebar.video(load_video(VIDEO_PATH))
+            with open(VIDEO_PATH, 'rb') as video_file:
+                st.sidebar.video(video_file.read())
 
-        st.markdown("---")
+        st.markdown('---')
         st.markdown(
-            "<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>",
+            '<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>',
             unsafe_allow_html=True,
         )
 
     else:
-        # Recarregar usuário em sessão ativa usando o ID salvo
-        session = Session()
-        try:
-            user = session.query(UserAnalise).get(st.session_state.user_id)
-            if not user:
-                st.error("Usuário não encontrado.")
-                st.session_state.clear()
-                st.rerun()
-            # Guardar atributos antes de fechar a sessão
-            user_id = user.id
-            user_name = user.name
-            user_email = user.email
-            user_whatsapp = user.whatsapp
-            user_cargo_id = user.cargo_id
-            user_profile_image = user.profile_image_path
+        user = st.session_state.user
+        st.sidebar.subheader(f'Bem-vindo(a), {user.name}')
 
-            cargo = session.query(Cargo).filter_by(id=user_cargo_id).first()
-            cargo_nome = cargo.nome if cargo else "Cliente"
-        finally:
-            session.close()
+        if user.profile_image_path and os.path.exists(user.profile_image_path):
+            st.sidebar.image(user.profile_image_path, width=100)
+        elif os.path.exists('./src/img/usuario.jpg'):
+            st.sidebar.image('./src/img/usuario.jpg', width=100)
 
-        # Salvar dados do usuário para uso no chat
-        st.session_state.primeiro_nome = user_name.split()[0] if user_name else "Usuário"
-        st.session_state.user_profile_image = user_profile_image
+        st.sidebar.write(f'Email: {user.email}')
+        st.sidebar.write(f'WhatsApp: {user.whatsapp}')
 
-        # Permissões por cargo
-        from views.permissoes import obter_paginas_por_cargo
-        paginas_permitidas = obter_paginas_por_cargo(cargo_nome)
+        if st.sidebar.button('🔓 Sair do sistema'):
+            for key in [
+                'user',
+                'logged_in',
+                'codigo_confirmado',
+                'temp_email',
+                'name',
+                'email',
+                'image',
+                'primeiro_nome',
+                'messages',
+                'full_content',
+            ]:
+                st.session_state.pop(key, None)
 
-        st.sidebar.subheader(f"Bem-vindo(a), {user_name}")
-
-        if user_profile_image and os.path.exists(user_profile_image):
-            st.sidebar.image(user_profile_image, width=100)
-        elif os.path.exists("./src/img/usuario.jpg"):
-            st.sidebar.image("./src/img/usuario.jpg", width=100)
-
-        st.sidebar.write(f"Email: {user_email}")
-        st.sidebar.write(f"WhatsApp: {user_whatsapp}")
-        st.sidebar.caption(f"Cargo: {cargo_nome}")
-
-        # Menu de navegação
-        st.sidebar.markdown("---")
-        pagina = st.sidebar.radio("Navegação", paginas_permitidas)
-
-        st.sidebar.markdown("---")
-        if st.sidebar.button("🔓 Sair do sistema"):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
             st.rerun()
 
-        # Roteamento de páginas
-        if pagina == "Oráculo Analista":
-            from analista import oraculo_analista
-            oraculo_analista()
-        elif pagina == "Dashboard":
-            from views.dashboard import render_dashboard
-            render_dashboard(Session, UserAnalise, Cargo)
-        elif pagina == "Clientes":
-            from views.clientes import render_clientes
-            render_clientes(Session, UserAnalise, Cargo)
-        elif pagina == "Parceiros":
-            from views.parceiros import render_parceiros
-            render_parceiros(Session, UserAnalise, Cargo)
-        elif pagina == "Financeiro":
-            from views.financeiro import render_financeiro
-            render_financeiro(Session, UserAnalise, Cargo)
-        elif pagina == "Configuração":
-            from views.configuracao import render_configuracao
-            render_configuracao(Session, UserAnalise, Cargo)
+        oraculo_analista()
 
 
-if __name__ == "__main__":
-    st.set_page_config(page_title="Oráculo Analista",
-                       page_icon="📊", layout="wide")
+if __name__ == '__main__':
+    st.set_page_config(page_title='Oráculo Analista',
+                       page_icon='📊', layout='wide')
     main()
