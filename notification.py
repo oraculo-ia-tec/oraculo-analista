@@ -1,5 +1,4 @@
 import base64
-import json
 import logging
 import os
 from datetime import datetime
@@ -16,10 +15,8 @@ except Exception:
     st = None
 
 try:
-    from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
 except Exception:
-    Credentials = None
     build = None
 
 
@@ -30,10 +27,21 @@ GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), 'src', 'img', 'perfil-analista.png')
 
+try:
+    from google.oauth2.credentials import Credentials as OAuthCredentials
+    from google.auth.transport.requests import Request as GoogleRequest
+except Exception:
+    OAuthCredentials = None
+    GoogleRequest = None
+
 
 def get_setting(key: str, default=None):
     if st is not None:
         try:
+            # Tenta primeiro na seção [email]
+            if 'email' in st.secrets and key in st.secrets['email']:
+                return st.secrets['email'][key]
+            # Depois no nível raiz
             if key in st.secrets:
                 value = st.secrets[key]
                 if hasattr(value, 'to_dict'):
@@ -54,66 +62,43 @@ def get_setting(key: str, default=None):
 
 class Notificador:
     """
-    Envia e-mails pela Gmail API usando service account com delegação.
+    Envia e-mails pela Gmail API usando OAuth2 com refresh token.
 
-    Configuração esperada em st.secrets ou .env:
-    - GMAIL_DELEGATED_USER: e-mail do usuário Workspace a ser impersonado
-    - GMAIL_SENDER_EMAIL: opcional, remetente exibido no cabeçalho From
-    - GMAIL_SERVICE_ACCOUNT_INFO: JSON completo como string
-      ou tabela/dict em secrets.toml
-    - GMAIL_SERVICE_ACCOUNT_FILE: caminho do arquivo JSON (fallback)
-
-    Observação importante:
-    Service account com Gmail API exige Google Workspace + Domain-Wide Delegation.
-    Contas Gmail pessoais normalmente não funcionam com esse fluxo.
+    Configuração esperada em st.secrets ([email]) ou .env:
+    - GOOGLE_CLIENT_ID
+    - GOOGLE_CLIENT_SECRET
+    - GMAIL_REFRESH_TOKEN
+    - EMAIL_REMETENTE   (endereço do remetente)
     """
 
     def __init__(self):
-        self.delegated_user = get_setting('GMAIL_DELEGATED_USER')
-        self.sender_email = get_setting('GMAIL_SENDER_EMAIL') or self.delegated_user
-        self.service_account_info = get_setting('GMAIL_SERVICE_ACCOUNT_INFO')
-        self.service_account_file = get_setting('GMAIL_SERVICE_ACCOUNT_FILE')
-
-    def _load_service_account_credentials(self):
-        if Credentials is None:
-            raise RuntimeError(
-                'Dependências do Google API não instaladas. Adicione google-api-python-client e google-auth.'
-            )
-
-        credentials = None
-
-        if isinstance(self.service_account_info, dict):
-            credentials = Credentials.from_service_account_info(
-                self.service_account_info,
-                scopes=GMAIL_SCOPES,
-            )
-        elif isinstance(self.service_account_info, str) and self.service_account_info.strip():
-            credentials = Credentials.from_service_account_info(
-                json.loads(self.service_account_info),
-                scopes=GMAIL_SCOPES,
-            )
-        elif self.service_account_file:
-            credentials = Credentials.from_service_account_file(
-                self.service_account_file,
-                scopes=GMAIL_SCOPES,
-            )
-        else:
-            raise RuntimeError(
-                'Credenciais da Gmail API não configuradas. Informe GMAIL_SERVICE_ACCOUNT_INFO '
-                'ou GMAIL_SERVICE_ACCOUNT_FILE.'
-            )
-
-        if not self.delegated_user:
-            raise RuntimeError(
-                'GMAIL_DELEGATED_USER não configurado. Para Gmail API com service account, '
-                'é necessário informar o usuário Workspace a ser delegado.'
-            )
-
-        return credentials.with_subject(self.delegated_user)
+        self.client_id      = get_setting('GOOGLE_CLIENT_ID')
+        self.client_secret  = get_setting('GOOGLE_CLIENT_SECRET')
+        self.refresh_token  = get_setting('GMAIL_REFRESH_TOKEN')
+        self.sender_email   = get_setting('EMAIL_REMETENTE')
 
     def _build_service(self):
-        credentials = self._load_service_account_credentials()
-        return build('gmail', 'v1', credentials=credentials, cache_discovery=False)
+        if OAuthCredentials is None or GoogleRequest is None:
+            raise RuntimeError(
+                'Dependências do Google API não instaladas. '
+                'Adicione google-auth, google-auth-oauthlib e google-api-python-client.'
+            )
+        if not all([self.client_id, self.client_secret, self.refresh_token]):
+            raise RuntimeError(
+                'Credenciais OAuth2 não configuradas. Verifique GOOGLE_CLIENT_ID, '
+                'GOOGLE_CLIENT_SECRET e GMAIL_REFRESH_TOKEN em secrets.toml ou .env.'
+            )
+
+        creds = OAuthCredentials(
+            token=None,
+            refresh_token=self.refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            scopes=GMAIL_SCOPES,
+        )
+        creds.refresh(GoogleRequest())
+        return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
     # ------------------------------------------------------------------
     # Logo helper
