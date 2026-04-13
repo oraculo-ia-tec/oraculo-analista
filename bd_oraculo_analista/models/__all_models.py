@@ -1,6 +1,0 @@
-from bd_oraculo_analista.models.user_analise import UserAnalise
-from bd_oraculo_analista.models.user_admin import UserAdmin
-from bd_oraculo_analista.models.cargo import Cargo
-from bd_oraculo_analista.models.enquete import Enquete
-from bd_oraculo_analista.models.resposta_enquete import RespostaEnquete
-from bd_oraculo_analista.models.direcionado_enquete import DirecionadoEnquete

@@ -1,5 +1,0 @@
-from bd_oraculo_analista.config.db_session import create_tables
-
-
-if __name__ == '__main__':
-    create_tables()

@@ -1,6 +1,9 @@
+import logging
 import os
 import random
 import string
+import threading
+import time
 
 import bcrypt
 import requests
@@ -12,6 +15,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from notification import Notificador
 from analista import oraculo_analista
+
+LOGGER = logging.getLogger(__name__)
 
 
 # =========================
@@ -188,6 +193,30 @@ def send_to_make_webhook(data: dict) -> bool:
         return False
 
 
+def _enviar_sequencia_emails(name: str, whatsapp: str, email: str, codigo: str, cargo_nome: str):
+    """
+    Executa em background:
+      1. E-mail de boas-vindas (imediato)
+      2. Aguarda 20 segundos
+      3. E-mail de verificação com código
+    """
+    try:
+        notificador = Notificador()
+        notificador.enviar_boas_vindas(name, email, whatsapp, cargo=cargo_nome)
+        LOGGER.info('E-mail de boas-vindas enviado para %s', email)
+    except Exception as exc:
+        LOGGER.error('Falha no e-mail de boas-vindas para %s: %s', email, exc)
+
+    time.sleep(20)
+
+    try:
+        notificador = Notificador()
+        notificador.enviar_verificacao(name, email, codigo)
+        LOGGER.info('E-mail de verificação enviado para %s', email)
+    except Exception as exc:
+        LOGGER.error('Falha no e-mail de verificação para %s: %s', email, exc)
+
+
 # =========================
 # Cadastro
 # =========================
@@ -219,22 +248,32 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.add(novo)
         session.commit()
 
+        # Resolve o nome do cargo para exibir no e-mail
+        cargo_nome = 'Cliente'
+        session_cargo = Session()
         try:
-            notificador = Notificador()
-            assunto = 'Código de Verificação - Oráculo Analista'
-            mensagem = f"""
-            <h3>Olá {name},</h3>
-            <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
-            <p>Use este código para ativar sua conta.</p>
-            """
-            notificador.enviar_email(email, assunto, mensagem)
+            cargo_obj = session_cargo.query(Cargo).filter_by(id=cargo_id).first()
+            if cargo_obj:
+                cargo_nome = cargo_obj.nome
         except Exception:
-            st.warning(
-                'Cadastro realizado, mas houve falha no envio do e-mail de verificação.')
+            pass
+        finally:
+            session_cargo.close()
+
+        # Dispara a sequência em background: boas-vindas → 20s → verificação
+        t = threading.Thread(
+            target=_enviar_sequencia_emails,
+            args=(name.strip(), whatsapp.strip(), email, codigo, cargo_nome),
+            daemon=True,
+        )
+        t.start()
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
-        st.success('Cadastro realizado. Verifique o código enviado por e-mail.')
+        st.success(
+            'Cadastro realizado! Enviamos um e-mail de boas-vindas. '
+            'O código de verificação será enviado em instantes.'
+        )
         return True
 
     except OperationalError:
@@ -416,14 +455,8 @@ def interface():
                             session.commit()
                             try:
                                 notificador = Notificador()
-                                assunto = 'Código de Verificação - Oráculo Analista'
-                                mensagem = f"""
-                                <h3>Olá {user.name},</h3>
-                                <p>Seu novo código de verificação para o Oráculo Analista é: <strong>{user.verification_code}</strong></p>
-                                <p>Use este código para ativar sua conta.</p>
-                                """
-                                notificador.enviar_email(
-                                    user.email, assunto, mensagem)
+                                notificador.enviar_verificacao(
+                                    user.name, user.email, user.verification_code)
                                 st.success(
                                     'Código reenviado com sucesso! Verifique seu e-mail.')
                             except Exception:
