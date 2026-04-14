@@ -166,9 +166,16 @@ def configurar_usuario_logado(user):
 
 
 def obter_avatar_usuario():
-    img = st.session_state.get("user_profile_image")
+    # Tenta session_state.image (definido em configurar_usuario_logado)
+    img = st.session_state.get("image")
     if img and os.path.exists(img):
         return img
+    # Tenta via objeto user
+    user = st.session_state.get("user")
+    if user and getattr(user, "profile_image_path", None):
+        path = user.profile_image_path
+        if os.path.exists(path):
+            return path
     return "./src/img/usuario.jpg"
 
 
@@ -251,19 +258,70 @@ def read_txt(file):
 # =========================
 # Upload para análise
 # =========================
-def carregar_arquivos():
-    uploaded_files = st.sidebar.file_uploader(
-        "Coloque seu arquivo aqui:",
-        type=["xlsx", "pdf", "xml", "json", "html",
-              "htm", "doc", "docx", "txt", "xls"],
-        accept_multiple_files=True,
+def _processar_arquivo(file):
+    """Processa um único arquivo e retorna o dicionário de resultado."""
+    if file.type in [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+    ]:
+        resultado = read_xlsx(file)
+    elif file.type == "application/pdf":
+        resultado = read_pdf(file)
+    elif file.type == "application/json":
+        resultado = read_json(file)
+    elif file.type in ["application/xml", "text/xml"]:
+        resultado = read_xml(file)
+    elif file.type in [
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    ]:
+        resultado = read_docx(file)
+    elif file.type == "text/plain":
+        resultado = read_txt(file)
+    elif file.type in ["text/html", "text/htm"]:
+        resultado = read_html(file)
+    else:
+        resultado = {
+            "text": "Tipo de arquivo não suportado.",
+            "pages": None,
+            "type": "unknown",
+        }
+    resultado["name"] = file.name
+    return resultado
+
+
+@st.dialog("📄 Leitura Concluída!")
+def _dialog_leitura_concluida():
+    st.markdown(
+        "O **Oráculo Analista** finalizou a leitura do(s) documento(s) com sucesso! 🎉\n\n"
+        "Agora você pode iniciar suas perguntas no **chat abaixo**. "
+        "Pergunte qualquer coisa sobre o conteúdo: resumos, análises, "
+        "dados específicos, comparações e muito mais.\n\n"
+        "💡 **Dica:** Seja específico nas perguntas para obter respostas mais precisas."
     )
+    if st.button("Entendi, vamos começar!", use_container_width=True):
+        st.session_state.pop("mostrar_dialog_leitura", None)
+        st.rerun()
 
-    arquivos_processados = []
 
-    col_carregar, col_limpar = st.sidebar.columns(2)
-    btn_carregar = col_carregar.button("CARREGAR")
-    btn_limpar = col_limpar.button("🔄 Limpar Conversa")
+def carregar_arquivos():
+    """Upload e leitura de documentos na área principal."""
+    col_upload, col_ler, col_limpar = st.columns([3, 1.5, 1.5])
+
+    with col_upload:
+        uploaded_files = st.file_uploader(
+            "Coloque seu arquivo aqui:",
+            type=["xlsx", "pdf", "xml", "json", "html",
+                  "htm", "doc", "docx", "txt", "xls"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+
+    with col_ler:
+        btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True)
+
+    with col_limpar:
+        btn_limpar = st.button("🔄 Limpar Conversa", use_container_width=True)
 
     if btn_limpar:
         st.session_state.messages = []
@@ -271,43 +329,27 @@ def carregar_arquivos():
         st.session_state.arquivos_processados = []
         st.rerun()
 
-    if btn_carregar:
+    arquivos_processados = []
+
+    if btn_ler:
         if not uploaded_files:
-            st.warning("Nenhum arquivo foi selecionado.")
+            st.warning("Nenhum arquivo foi selecionado. Faça o upload primeiro.")
             return arquivos_processados
 
-        for file in uploaded_files:
-            st.write(f"**Arquivo carregado:** {file.name}")
+        with st.spinner("Lendo documento(s)..."):
+            for file in uploaded_files:
+                resultado = _processar_arquivo(file)
+                arquivos_processados.append(resultado)
 
-            if file.type in [
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-excel",
-            ]:
-                resultado = read_xlsx(file)
-            elif file.type == "application/pdf":
-                resultado = read_pdf(file)
-            elif file.type == "application/json":
-                resultado = read_json(file)
-            elif file.type in ["application/xml", "text/xml"]:
-                resultado = read_xml(file)
-            elif file.type in [
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            ]:
-                resultado = read_docx(file)
-            elif file.type == "text/plain":
-                resultado = read_txt(file)
-            elif file.type in ["text/html", "text/htm"]:
-                resultado = read_html(file)
-            else:
-                resultado = {
-                    "text": "Tipo de arquivo não suportado.",
-                    "pages": None,
-                    "type": "unknown",
-                }
+        # Salva no session_state antes do rerun para persistir os dados
+        st.session_state.arquivos_processados = arquivos_processados
+        st.session_state.full_content = obter_resumo_arquivos(arquivos_processados)
+        st.session_state.mostrar_dialog_leitura = True
+        st.balloons()
+        st.rerun()
 
-            resultado["name"] = file.name
-            arquivos_processados.append(resultado)
+    if st.session_state.get("mostrar_dialog_leitura"):
+        _dialog_leitura_concluida()
 
     return arquivos_processados
 
@@ -445,12 +487,11 @@ def oraculo_analista():
 
     arquivos = carregar_arquivos()
 
-    if arquivos:
-        st.session_state.arquivos_processados = arquivos
-        st.session_state.full_content = obter_resumo_arquivos(arquivos)
-
+    # Exibe conteúdo dos arquivos já processados (persistido no session_state)
+    arquivos_salvos = st.session_state.get("arquivos_processados", [])
+    if arquivos_salvos:
         st.subheader("Conteúdo dos Arquivos Carregados:")
-        for i, arq in enumerate(arquivos):
+        for i, arq in enumerate(arquivos_salvos):
             titulo = f"{arq.get('name', f'Arquivo {i+1}')}"
             if arq.get("pages") is not None:
                 titulo += f" | {arq['pages']} páginas"
@@ -465,7 +506,7 @@ def oraculo_analista():
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": f'🌟 {primeiro_nome}, estou aqui para te ajudar a analisar ou fazer estudo sobre seus documentos. Carregue do lado esquerdo um documento para iniciar 💡',
+                "content": f'🌟 {primeiro_nome}, estou aqui para te ajudar a analisar ou fazer estudo sobre seus documentos. Faça o upload de um documento acima e clique em **📖 LER DOCUMENTO** para iniciar 💡',
             }
         ]
 
