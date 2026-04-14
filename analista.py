@@ -176,7 +176,16 @@ def obter_avatar_usuario():
         path = user.profile_image_path
         if os.path.exists(path):
             return path
-    return "./src/img/usuario.jpg"
+    # Tenta buscar pelo e-mail do usuário logado
+    if user and getattr(user, "email", None):
+        for ext in (".png", ".jpg", ".jpeg"):
+            candidate = os.path.join(PROFILE_IMAGES_DIR, f"{user.email}{ext}")
+            if os.path.exists(candidate):
+                return candidate
+    fallback = "./src/img/usuario.jpg"
+    if os.path.exists(fallback):
+        return fallback
+    return None
 
 
 # =========================
@@ -301,24 +310,23 @@ def _dialog_leitura_concluida():
     )
     if st.button("Entendi, vamos começar!", use_container_width=True):
         st.session_state.pop("mostrar_dialog_leitura", None)
+        st.session_state.pop("mostrar_balloons", None)
         st.rerun()
 
 
 def carregar_arquivos():
     """Upload e leitura de documentos na área principal."""
-    col_upload, col_ler, col_limpar = st.columns([3, 1.5, 1.5])
+    uploaded_files = st.file_uploader(
+        "📎 Faça upload do seu documento para análise:",
+        type=["xlsx", "pdf", "xml", "json", "html",
+              "htm", "doc", "docx", "txt", "xls"],
+        accept_multiple_files=True,
+    )
 
-    with col_upload:
-        uploaded_files = st.file_uploader(
-            "Coloque seu arquivo aqui:",
-            type=["xlsx", "pdf", "xml", "json", "html",
-                  "htm", "doc", "docx", "txt", "xls"],
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-        )
+    col_ler, col_limpar = st.columns(2)
 
     with col_ler:
-        btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True)
+        btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True, type="primary")
 
     with col_limpar:
         btn_limpar = st.button("🔄 Limpar Conversa", use_container_width=True)
@@ -344,8 +352,16 @@ def carregar_arquivos():
         # Salva no session_state antes do rerun para persistir os dados
         st.session_state.arquivos_processados = arquivos_processados
         st.session_state.full_content = obter_resumo_arquivos(arquivos_processados)
-        st.session_state.mostrar_dialog_leitura = True
+        st.session_state.mostrar_balloons = True
+        st.rerun()
+
+    # Exibe balloons primeiro, depois agenda o dialog
+    if st.session_state.get("mostrar_balloons"):
         st.balloons()
+        st.session_state.pop("mostrar_balloons", None)
+        st.session_state.mostrar_dialog_leitura = True
+        import time
+        time.sleep(2)
         st.rerun()
 
     if st.session_state.get("mostrar_dialog_leitura"):

@@ -311,6 +311,7 @@ def verificar_codigo(email, codigo):
                 st.session_state.logged_in = True
                 st.session_state.codigo_confirmado = True
                 st.session_state.temp_email = None
+                st.session_state.image = user_fresh.profile_image_path if user_fresh else None
                 st.rerun()
             finally:
                 session2.close()
@@ -428,6 +429,7 @@ def interface():
             if user:
                 st.session_state.user = user
                 st.session_state.logged_in = True
+                st.session_state.image = user.profile_image_path
                 st.rerun()
 
     if 'temp_email' in st.session_state and not st.session_state.get('codigo_confirmado'):
