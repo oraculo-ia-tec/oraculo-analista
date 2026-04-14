@@ -373,29 +373,18 @@ def interface():
         if imagem:
             st.sidebar.image(imagem, caption='Pré-visualização', width=150)
 
-        cargos = []
+        # Cargo fixo como Cliente (ID 3)
+        cargo_id = None
         session = Session()
         try:
-            cargos = session.query(Cargo).order_by(Cargo.nome.asc()).all()
-        except Exception as e:
-            st.sidebar.error(f'Erro ao buscar cargos: {e}')
+            cargo_obj = session.query(Cargo).filter(
+                Cargo.nome.ilike('cliente')).first()
+            if cargo_obj:
+                cargo_id = cargo_obj.id
+        except Exception:
+            pass
         finally:
             session.close()
-
-        cargo_opcoes = {cargo.nome: cargo.id for cargo in cargos}
-        default_index = 0
-        if cargos:
-            nomes_cargos = list(cargo_opcoes.keys())
-            for idx, cargo in enumerate(cargos):
-                if cargo.nome.lower() == 'cliente':
-                    default_index = idx
-                    break
-            cargo_nome = st.sidebar.selectbox(
-                'Cargo', nomes_cargos, index=default_index)
-            cargo_id = cargo_opcoes[cargo_nome]
-        else:
-            cargo_nome = None
-            cargo_id = None
 
         if st.sidebar.button('Cadastrar'):
             erro = False
@@ -415,7 +404,7 @@ def interface():
                 st.sidebar.error('Selecione uma Imagem de Perfil.')
                 erro = True
             if cargo_id is None:
-                st.sidebar.error('Selecione um Cargo.')
+                st.sidebar.error('Cargo "Cliente" não encontrado no banco.')
                 erro = True
             if not erro:
                 cadastrar_usuario(nome, zap, email, senha, imagem, cargo_id)

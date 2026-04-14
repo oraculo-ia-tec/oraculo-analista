@@ -1,0 +1,55 @@
+============================================================
+   ORÁCULO ANALISTA — LISTA DE USUÁRIOS CADASTRADOS
+   Gerado em: 14/04/2026 18:00:00
+============================================================
+
+[ TABELA: user_analise ]
+
+  ID          : 1
+  Nome        : William Eustaquio
+  E-mail      : oraculoiatec@gmail.com
+  WhatsApp    : 998417976
+  Verificado  : Sim
+  Cargo ID    : 1
+----------------------------------------
+  ID          : 2
+  Nome        : Tony Stark
+  E-mail      : ferragensefraim@gmail.com
+  WhatsApp    : 900001111
+  Verificado  : Sim
+  Cargo ID    : 3
+----------------------------------------
+  ID          : 3
+  Nome        : Pantera Negra
+  E-mail      : flashdigital.tech@gmail.com
+  WhatsApp    : 900003333
+  Verificado  : Sim
+  Cargo ID    : 3
+----------------------------------------
+  ID          : 4
+  Nome        : Capitã Marvel
+  E-mail      : metrixfacebook@gmail.com
+  WhatsApp    : 900004444
+  Verificado  : Sim
+  Cargo ID    : 3
+----------------------------------------
+  ID          : 5
+  Nome        : William Teste
+  E-mail      : williamllider@gmail.com
+  WhatsApp    : 11999999999
+  Verificado  : Não
+  Cargo ID    : 3
+----------------------------------------
+  ID          : 6
+  Nome        : Laughing Man
+  E-mail      : rededescpro@gmail.com
+  WhatsApp    : 11988887777
+  Verificado  : Sim
+  Cargo ID    : 3
+----------------------------------------
+
+[ TABELA: user_admin ]
+
+  Nenhum usuário encontrado.
+
+============================================================
