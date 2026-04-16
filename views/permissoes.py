@@ -9,6 +9,8 @@ PERMISSOES = {
         "Parceiros",
         "Financeiro",
         "Configuração",
+        "Usuários Online",
+        "Automação",
     ],
     "Admin": [
         "Oráculo Analista",
@@ -17,6 +19,8 @@ PERMISSOES = {
         "Parceiros",
         "Financeiro",
         "Configuração",
+        "Usuários Online",
+        "Automação",
     ],
     "Parceiro": [
         "Oráculo Analista",

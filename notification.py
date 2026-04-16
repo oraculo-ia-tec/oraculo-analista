@@ -7,7 +7,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from decouple import AutoConfig
-from google.auth.exceptions import RefreshError
+
+try:
+    from google.auth.exceptions import RefreshError
+except Exception:
+    RefreshError = Exception
 
 try:
     import streamlit as st
@@ -22,7 +26,7 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
-config = AutoConfig(search_path='.')
+config = AutoConfig()
 GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), 'src', 'img', 'perfil-analista.png')
@@ -505,6 +509,90 @@ class Notificador:
         <p>Você já pode acessar o Oráculo Analista com todos os recursos liberados.</p>
         """
         self.enviar_email(email, assunto, mensagem)
+
+    def enviar_notificacao_novo_usuario(
+        self,
+        nome_novo: str,
+        email_novo: str,
+        cargo: str,
+        email_destino: str,
+    ) -> bool:
+        """Notifica o administrador/dev sobre um novo cadastro no sistema."""
+        assunto = '🆕 Novo usuário cadastrado — Oráculo Analista'
+        data_hora = datetime.now().strftime('%d/%m/%Y às %H:%M:%S')
+        html = f"""
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background-color:#0d0d1a;font-family:'Segoe UI',Arial,sans-serif;color:#e0e0e0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0d0d1a;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table width="600" cellpadding="0" cellspacing="0"
+               style="background:linear-gradient(160deg,#1a1a2e 0%,#16213e 100%);
+                      border-radius:16px;overflow:hidden;border:1px solid #3a1f6e;">
+          <tr>
+            <td align="center" style="padding:36px 32px 20px;">
+              <img src="cid:oraculo_logo" alt="Oráculo Analista"
+                   width="90" height="90"
+                   style="border-radius:50%;border:3px solid #7c3aed;display:block;margin:0 auto 16px;"/>
+              <h1 style="margin:0;font-size:24px;font-weight:700;
+                         background:linear-gradient(90deg,#a855f7,#ffffff);
+                         -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+                🆕 Novo Cadastro Detectado
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <p style="font-size:15px;color:#d0c8e8;">
+                Um novo usuário acaba de se cadastrar na plataforma:
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0"
+                     style="background:#0f0f2a;border-radius:10px;border:1px solid #3a1f6e;">
+                <tr>
+                  <td colspan="2" style="padding:12px 20px;
+                      background:linear-gradient(90deg,#4c1d95,#1e3a8a);
+                      font-size:12px;font-weight:700;text-transform:uppercase;
+                      letter-spacing:1px;color:#e9d5ff;">
+                    Dados do Novo Usuário
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 20px;color:#9ca3af;font-size:14px;width:35%;">Nome</td>
+                  <td style="padding:10px 20px;color:#f3f4f6;font-size:14px;font-weight:600;">{nome_novo}</td>
+                </tr>
+                <tr style="background:#13132b;">
+                  <td style="padding:10px 20px;color:#9ca3af;font-size:14px;">E-mail</td>
+                  <td style="padding:10px 20px;color:#f3f4f6;font-size:14px;font-weight:600;">{email_novo}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 20px;color:#9ca3af;font-size:14px;">Cargo</td>
+                  <td style="padding:10px 20px;color:#f3f4f6;font-size:14px;font-weight:600;">{cargo}</td>
+                </tr>
+                <tr style="background:#13132b;">
+                  <td style="padding:10px 20px;color:#9ca3af;font-size:14px;">Data/Hora</td>
+                  <td style="padding:10px 20px;color:#f3f4f6;font-size:14px;font-weight:600;">{data_hora}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 32px 32px;" align="center">
+              <p style="font-size:13px;color:#6b7280;margin:0;">
+                Este e-mail foi gerado automaticamente pela automação do Oráculo Analista.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+        mime_msg = self._build_mime_com_logo(email_destino, assunto, html)
+        return self._send_raw(mime_msg)
 
 
 class WhatsAppSimulado:

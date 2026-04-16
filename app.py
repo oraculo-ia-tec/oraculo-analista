@@ -22,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 # =========================
 # Configurações
 # =========================
-config = AutoConfig(search_path='.')
+config = AutoConfig()
 
 
 def get_setting(key: str, default=None):
@@ -267,6 +267,14 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
             daemon=True,
         )
         t.start()
+
+        # Notifica administradores via automação (se ativa)
+        try:
+            from views.automacao import notificar_novo_usuario
+            from notification import Notificador as _Notificador
+            notificar_novo_usuario(name.strip(), email, cargo_nome, _Notificador)
+        except Exception:
+            pass
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
@@ -659,6 +667,23 @@ def main():
 
     else:
         user = st.session_state.user
+
+        # Resolve nome do cargo
+        session_cargo = Session()
+        try:
+            cargo_obj = session_cargo.query(Cargo).filter_by(id=user.cargo_id).first()
+            cargo_nome = cargo_obj.nome if cargo_obj else ''
+        finally:
+            session_cargo.close()
+
+        # Registra sessão ativa para monitoramento online
+        try:
+            from views.usuarios_online import registrar_sessao_ativa
+            registrar_sessao_ativa(user.id, user.name, user.email)
+        except Exception:
+            pass
+
+        # --- Sidebar: perfil ---
         st.sidebar.subheader(f'Bem-vindo(a), {user.name}')
 
         if user.profile_image_path and os.path.exists(user.profile_image_path):
@@ -667,26 +692,78 @@ def main():
             st.sidebar.image('./src/img/usuario.jpg', width=100)
 
         st.sidebar.write(f'Email: {user.email}')
-        st.sidebar.write(f'WhatsApp: {user.whatsapp}')
+        st.sidebar.write(f'Cargo: {cargo_nome}')
 
+        # --- Determina páginas permitidas ---
+        from views.permissoes import obter_paginas_por_cargo
+        paginas_disponiveis = obter_paginas_por_cargo(cargo_nome)
+
+        # Ícones de navegação
+        _icones = {
+            'Oráculo Analista': '🤖',
+            'Dashboard': '📊',
+            'Clientes': '👥',
+            'Parceiros': '🤝',
+            'Financeiro': '💰',
+            'Configuração': '⚙️',
+            'Usuários Online': '🟢',
+            'Automação': '🤖',
+        }
+        opcoes_menu = [f"{_icones.get(p, '')} {p}" for p in paginas_disponiveis]
+
+        st.sidebar.markdown('---')
+        st.sidebar.markdown('### 📋 Menu')
+        selecao = st.sidebar.radio(
+            'Navegação',
+            opcoes_menu,
+            label_visibility='collapsed',
+            key='menu_nav',
+        )
+        # Extrai nome da página sem ícone
+        pagina_atual = selecao.split(' ', 1)[-1].strip()
+
+        st.sidebar.markdown('---')
         if st.sidebar.button('🔓 Sair do sistema'):
             for key in [
-                'user',
-                'logged_in',
-                'codigo_confirmado',
-                'temp_email',
-                'name',
-                'email',
-                'image',
-                'primeiro_nome',
-                'messages',
-                'full_content',
+                'user', 'logged_in', 'codigo_confirmado', 'temp_email',
+                'name', 'email', 'image', 'primeiro_nome', 'messages',
+                'full_content', 'menu_nav',
             ]:
                 st.session_state.pop(key, None)
-
             st.rerun()
 
-        oraculo_analista()
+        # --- Renderiza página selecionada ---
+        if pagina_atual == 'Oráculo Analista':
+            oraculo_analista()
+
+        elif pagina_atual == 'Dashboard':
+            from views.dashboard import render_dashboard
+            render_dashboard(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Clientes':
+            from views.clientes import render_clientes
+            render_clientes(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Parceiros':
+            from views.parceiros import render_parceiros
+            render_parceiros(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Financeiro':
+            from views.financeiro import render_financeiro
+            render_financeiro(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Configuração':
+            st.session_state.user_id = user.id
+            from views.configuracao import render_configuracao
+            render_configuracao(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Usuários Online':
+            from views.usuarios_online import render_usuarios_online
+            render_usuarios_online(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Automação':
+            from views.automacao import render_automacao
+            render_automacao(Session, UserAnalise, Cargo)
 
 
 if __name__ == '__main__':
