@@ -217,10 +217,8 @@ class Notificador:
               <img src="cid:oraculo_logo" alt="Oráculo Analista"
                    width="110" height="110"
                    style="border-radius:50%;border:3px solid #7c3aed;display:block;margin:0 auto 20px;"/>
-              <h1 style="margin:0;font-size:28px;font-weight:700;
-                         background:linear-gradient(90deg,#a855f7,#ffffff);
-                         -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-                Bem-vindo(a) ao Oráculo Analista!
+              <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">
+                <span style="color:#c084fc;">✨</span> Bem-vindo(a) ao Oráculo Analista!
               </h1>
               <p style="margin:10px 0 0;font-size:15px;color:#b0aac8;">
                 Sua jornada de inteligência analítica começa agora.
@@ -392,10 +390,8 @@ class Notificador:
               <img src="cid:oraculo_logo" alt="Oráculo Analista"
                    width="110" height="110"
                    style="border-radius:50%;border:3px solid #7c3aed;display:block;margin:0 auto 20px;"/>
-              <h1 style="margin:0;font-size:26px;font-weight:700;
-                         background:linear-gradient(90deg,#a855f7,#ffffff);
-                         -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-                Verifique sua conta
+              <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">
+                <span style="color:#c084fc;">🔐</span> Verifique sua conta
               </h1>
               <p style="margin:10px 0 0;font-size:15px;color:#b0aac8;">
                 Oráculo Analista — Ativação de Conta
@@ -536,11 +532,13 @@ class Notificador:
               <img src="cid:oraculo_logo" alt="Oráculo Analista"
                    width="90" height="90"
                    style="border-radius:50%;border:3px solid #7c3aed;display:block;margin:0 auto 16px;"/>
-              <h1 style="margin:0;font-size:24px;font-weight:700;
-                         background:linear-gradient(90deg,#a855f7,#ffffff);
-                         -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-                🆕 Novo Cadastro Detectado
+              <h1 style="margin:0;font-size:26px;font-weight:800;
+                         color:#ffffff;letter-spacing:0.5px;">
+                <span style="color:#c084fc;">🆕</span> Novo Cadastro Detectado
               </h1>
+              <p style="margin:8px 0 0;font-size:13px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;">
+                Oráculo Analista — Notificação Automática
+              </p>
             </td>
           </tr>
           <tr>
