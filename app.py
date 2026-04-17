@@ -708,6 +708,7 @@ def main():
             'Configuração': '⚙️',
             'Usuários Online': '🟢',
             'Automação': '🤖',
+            'Banco de Dados': '🗄️',
         }
         opcoes_menu = [f"{_icones.get(p, '')} {p}" for p in paginas_disponiveis]
 
@@ -764,6 +765,10 @@ def main():
         elif pagina_atual == 'Automação':
             from views.automacao import render_automacao
             render_automacao(Session, UserAnalise, Cargo)
+
+        elif pagina_atual == 'Banco de Dados':
+            from views.banco_dados import render_banco_dados
+            render_banco_dados(Session, UserAnalise, Cargo, DATABASE_URL)
 
 
 if __name__ == '__main__':

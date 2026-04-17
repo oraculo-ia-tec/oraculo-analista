@@ -11,6 +11,7 @@ PERMISSOES = {
         "Configuração",
         "Usuários Online",
         "Automação",
+        "Banco de Dados",
     ],
     "Admin": [
         "Oráculo Analista",
@@ -21,6 +22,7 @@ PERMISSOES = {
         "Configuração",
         "Usuários Online",
         "Automação",
+        "Banco de Dados",
     ],
     "Parceiro": [
         "Oráculo Analista",
