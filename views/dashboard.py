@@ -209,7 +209,7 @@ def render_dashboard(Session, UserAnalise, Cargo):
         df_display["Verificado"] = df_display["Verificado"].map({True: "✅", False: "⏳"})
         st.dataframe(
             df_display[["Nome", "Email", "Cargo", "Verificado"]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=220,
         )
@@ -221,11 +221,13 @@ def render_dashboard(Session, UserAnalise, Cargo):
         fig4, ax4 = plt.subplots(figsize=(8, max(2.5, len(cargo_counts) * 0.7 + 1)))
         _apply_dark_style(fig4, ax4)
 
-        palette = {cargo: _PALETTE[i % len(_PALETTE)] for i, cargo in enumerate(cargo_counts.index)}
+        df_rank = pd.DataFrame({"Cargo": cargo_counts.index, "Total": cargo_counts.values})
+        df_rank["cor"] = [_PALETTE[i % len(_PALETTE)] for i in range(len(df_rank))]
+        palette_map = dict(zip(df_rank["Cargo"], df_rank["cor"]))
         sns.barplot(
-            x=cargo_counts.values, y=cargo_counts.index,
-            palette=palette, ax=ax4, orient="h",
-            edgecolor=_BORDER, linewidth=0.6,
+            data=df_rank, x="Total", y="Cargo", hue="Cargo",
+            palette=palette_map, ax=ax4, orient="h",
+            edgecolor=_BORDER, linewidth=0.6, legend=False,
         )
 
         for i, val in enumerate(cargo_counts.values):
