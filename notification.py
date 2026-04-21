@@ -488,6 +488,150 @@ class Notificador:
         mime_msg = self._build_mime_com_logo(email, assunto, html)
         return self._send_raw(mime_msg)
 
+    def enviar_recuperacao_senha(self, nome: str, email: str, link: str) -> bool:
+        """Envia e-mail com o link de recuperação de senha."""
+        assunto = '🔑 Recuperação de Senha — Oráculo Analista'
+        primeiro_nome = nome.split()[0] if nome else 'usuário'
+        html = f"""
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background-color:#0d0d1a;font-family:'Segoe UI',Arial,sans-serif;color:#e0e0e0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0d0d1a;">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="background:linear-gradient(160deg,#1a1a2e 0%,#16213e 100%);
+                    border-radius:16px;overflow:hidden;border:1px solid #3a1f6e;">
+        <tr><td align="center" style="padding:36px 32px 20px;">
+          <img src="cid:oraculo_logo" alt="Oráculo Analista"
+               width="110" height="110"
+               style="border-radius:50%;border:3px solid #7c3aed;display:block;margin:0 auto 20px;"/>
+          <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;">
+            <span style="color:#c084fc;">🔑</span> Recuperação de Senha
+          </h1>
+          <p style="margin:10px 0 0;font-size:15px;color:#b0aac8;">
+            Oráculo Analista — Redefinição de Acesso
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 20px;">
+          <p style="font-size:16px;line-height:1.6;color:#d0c8e8;">
+            Olá, <strong style="color:#a855f7;">{primeiro_nome}</strong>! 👋<br/>
+            Recebemos uma solicitação para redefinir a senha da sua conta.
+            Clique no botão abaixo para criar uma nova senha:
+          </p>
+        </td></tr>
+        <tr><td align="center" style="padding:8px 32px 28px;">
+          <a href="{link}"
+             style="display:inline-block;padding:14px 32px;
+                    background:linear-gradient(135deg,#7c3aed,#4c1d95);
+                    color:#ffffff;text-decoration:none;font-weight:700;
+                    font-size:16px;border-radius:10px;letter-spacing:0.5px;">
+            🔐 Redefinir Minha Senha
+          </a>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px;">
+          <p style="font-size:13px;color:#8b85a8;line-height:1.6;">
+            Se o botão não funcionar, copie e cole o link abaixo no seu navegador:<br/>
+            <a href="{link}" style="color:#c084fc;word-break:break-all;">{link}</a>
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="background:#1a103a;border-radius:10px;border:1px solid #3730a3;">
+            <tr><td style="padding:16px 20px;">
+              <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#c4b5fd;">
+                ⚠️ Informações importantes:
+              </p>
+              <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:#b0aac8;">
+                <li>Este link é <strong>válido por 60 minutos</strong>.</li>
+                <li>O link só pode ser utilizado <strong>uma única vez</strong>.</li>
+                <li>Se você não solicitou esta redefinição, ignore este e-mail.</li>
+              </ul>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 32px 32px;" align="center">
+          <p style="font-size:13px;color:#6b7280;margin:0;">
+            🔒 Por segurança, nunca compartilhe este link com ninguém.
+          </p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#0a0a1a;border-top:1px solid #2d1b69;" align="center">
+          <p style="margin:0;font-size:12px;color:#4b5563;">
+            © {datetime.now().year} Oráculo Analista — Desenvolvido com ❤️ por Oráculos AI
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>
+"""
+        mime_msg = self._build_mime_com_logo(email, assunto, html)
+        return self._send_raw(mime_msg)
+
+    def enviar_senha_alterada(self, nome: str, email: str) -> bool:
+        """Confirma ao usuário que a senha foi alterada com sucesso."""
+        assunto = '✅ Senha Alterada com Sucesso — Oráculo Analista'
+        primeiro_nome = nome.split()[0] if nome else 'usuário'
+        agora = datetime.now().strftime('%d/%m/%Y às %H:%M')
+        html = f"""
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:0;background-color:#0d0d1a;font-family:'Segoe UI',Arial,sans-serif;color:#e0e0e0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0d0d1a;">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="background:linear-gradient(160deg,#1a1a2e 0%,#16213e 100%);
+                    border-radius:16px;overflow:hidden;border:1px solid #166534;">
+        <tr><td align="center" style="padding:36px 32px 20px;">
+          <img src="cid:oraculo_logo" alt="Oráculo Analista"
+               width="110" height="110"
+               style="border-radius:50%;border:3px solid #22c55e;display:block;margin:0 auto 20px;"/>
+          <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;">
+            <span style="color:#22c55e;">✅</span> Senha Alterada com Sucesso
+          </h1>
+          <p style="margin:10px 0 0;font-size:15px;color:#b0aac8;">
+            Oráculo Analista — Confirmação de Segurança
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 20px;">
+          <p style="font-size:16px;line-height:1.6;color:#d0c8e8;">
+            Olá, <strong style="color:#22c55e;">{primeiro_nome}</strong>! 👋<br/>
+            Confirmamos que a senha da sua conta foi <strong>alterada com sucesso</strong>
+            em <strong>{agora}</strong>.
+          </p>
+          <p style="font-size:16px;line-height:1.6;color:#d0c8e8;">
+            Você já pode acessar o Oráculo Analista normalmente utilizando
+            sua nova senha.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="background:#0f1f12;border-radius:10px;border:1px solid #166534;">
+            <tr><td style="padding:16px 20px;">
+              <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#86efac;">
+                🛡️ Não foi você?
+              </p>
+              <p style="margin:0;font-size:14px;line-height:1.6;color:#b0aac8;">
+                Se você <strong>não realizou</strong> esta alteração, entre em contato
+                imediatamente com nosso suporte para proteger sua conta.
+              </p>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#0a0a1a;border-top:1px solid #166534;" align="center">
+          <p style="margin:0;font-size:12px;color:#4b5563;">
+            © {datetime.now().year} Oráculo Analista — Desenvolvido com ❤️ por Oráculos AI
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>
+"""
+        mime_msg = self._build_mime_com_logo(email, assunto, html)
+        return self._send_raw(mime_msg)
+
     def enviar_confirmacao_agendamento(self, nome, email, data, hora):
         assunto = 'Confirmação de Agendamento - Oráculo Analista'
         mensagem = f"""

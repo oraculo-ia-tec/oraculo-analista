@@ -15,6 +15,13 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from notification import Notificador
 from analista import oraculo_analista
+from password_reset import (
+    register_model as _register_password_reset_model,
+    criar_token_para,
+    validar_token,
+    consumir_token,
+    atualizar_senha,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -146,6 +153,8 @@ class UserAnalise(Base):
     is_verified = Column(Boolean, default=False)
     cargo_id = Column(BigInteger, ForeignKey('cargo.id'), nullable=False)
 
+
+PasswordReset = _register_password_reset_model(Base)
 
 Base.metadata.create_all(engine)
 
@@ -361,6 +370,269 @@ def autenticar_usuario(email, password):
 
 
 # =========================
+# Recuperação de senha
+# =========================
+APP_BASE_URL = get_setting('APP_BASE_URL', 'http://localhost:8501')
+
+
+def _build_reset_link(token: str) -> str:
+    base = APP_BASE_URL
+    if not base or str(base).strip().lower() in ('', 'none', 'null'):
+        base = 'http://localhost:8501'
+    base = str(base).rstrip('/')
+    return f'{base}/?reset_token={token}'
+
+
+def _enviar_email_recuperacao_bg(nome: str, email: str, link: str):
+    try:
+        Notificador().enviar_recuperacao_senha(nome, email, link)
+        LOGGER.info('E-mail de recuperação enviado para %s', email)
+    except Exception as exc:
+        LOGGER.error('Falha no e-mail de recuperação para %s: %s', email, exc)
+
+
+def _enviar_email_senha_alterada_bg(nome: str, email: str):
+    try:
+        Notificador().enviar_senha_alterada(nome, email)
+        LOGGER.info('E-mail de confirmação de senha enviado para %s', email)
+    except Exception as exc:
+        LOGGER.error(
+            'Falha no e-mail de confirmação de senha para %s: %s', email, exc)
+
+
+def solicitar_recuperacao(email: str) -> bool:
+    """Verifica e-mail no banco e dispara e-mail com link de recuperação."""
+    email = normalize_email(email)
+    if not email:
+        st.error('Informe um e-mail válido.')
+        return False
+
+    session = Session()
+    try:
+        user = session.query(UserAnalise).filter_by(email=email).first()
+        if not user:
+            st.error('E-mail não encontrado em nossa base de dados.')
+            return False
+
+        token = criar_token_para(session, PasswordReset, email)
+        link = _build_reset_link(token)
+
+        threading.Thread(
+            target=_enviar_email_recuperacao_bg,
+            args=(user.name, email, link),
+            daemon=True,
+        ).start()
+        return True
+    except Exception as e:
+        session.rollback()
+        st.error(f'Erro ao processar solicitação: {e}')
+        return False
+    finally:
+        session.close()
+
+
+def redefinir_senha(token: str, nova_senha: str) -> tuple[bool, str | None]:
+    """Valida token, atualiza senha e retorna (ok, email_do_usuario)."""
+    session = Session()
+    try:
+        reg = validar_token(session, PasswordReset, token)
+        if not reg:
+            return False, None
+
+        email = reg.email
+        if not atualizar_senha(session, UserAnalise, email, nova_senha):
+            return False, None
+
+        consumir_token(session, PasswordReset, token)
+
+        user = session.query(UserAnalise).filter_by(email=email).first()
+        if user:
+            threading.Thread(
+                target=_enviar_email_senha_alterada_bg,
+                args=(user.name, email),
+                daemon=True,
+            ).start()
+        return True, email
+    except Exception as e:
+        session.rollback()
+        LOGGER.exception('Erro ao redefinir senha: %s', e)
+        return False, None
+    finally:
+        session.close()
+
+
+# =========================
+# Diálogos explicativos do fluxo de recuperação
+# =========================
+@st.dialog('🔑 Recuperação de Senha')
+def _dialog_iniciar_recuperacao():
+    st.markdown(
+        'Você será direcionado para a página de **Recuperar Minha Senha**.\n\n'
+        'Informe o **e-mail cadastrado** em sua conta. Faremos uma verificação '
+        'em nosso banco de dados e enviaremos um **link seguro** para você '
+        'criar uma nova senha.\n\n'
+        '⏱️ O link tem validade de **60 minutos** e só pode ser utilizado uma vez.'
+    )
+    if st.button('Continuar', use_container_width=True, key='dlg_rec_continuar'):
+        st.session_state.pop('mostrar_dialog_iniciar_recuperacao', None)
+        st.session_state.tela_auth = 'recuperar'
+        st.rerun()
+
+
+@st.dialog('📧 E-mail de Recuperação Enviado')
+def _dialog_email_enviado():
+    email = st.session_state.get('reset_email_destino', '')
+    st.success('Verificamos seu e-mail com sucesso!')
+    st.markdown(
+        f'Enviamos um **link de recuperação** para:\n\n'
+        f'**{email}**\n\n'
+        '➡️ Acesse seu e-mail e clique no botão **"Redefinir Minha Senha"**.\n\n'
+        '📂 Caso não encontre, verifique também a pasta de **spam** ou '
+        '**lixo eletrônico**.'
+    )
+    if st.button('Entendi', use_container_width=True, key='dlg_email_ok'):
+        st.session_state.pop('mostrar_dialog_email_enviado', None)
+        st.rerun()
+
+
+@st.dialog('🔐 Link Validado')
+def _dialog_link_validado():
+    st.success('Link de recuperação validado com sucesso!')
+    st.markdown(
+        'Agora crie uma **nova senha** para sua conta. Recomendações:\n\n'
+        '- Use **ao menos 8 caracteres**.\n'
+        '- Misture letras maiúsculas, minúsculas, números e símbolos.\n'
+        '- **Não reutilize** senhas antigas.\n\n'
+        'Você precisará digitar a senha **duas vezes** para confirmar.'
+    )
+    if st.button('Continuar', use_container_width=True, key='dlg_link_ok'):
+        st.session_state.pop('mostrar_dialog_link_validado', None)
+        st.rerun()
+
+
+@st.dialog('✅ Senha Alterada com Sucesso')
+def _dialog_senha_alterada():
+    st.success('Sua nova senha foi cadastrada com sucesso!')
+    st.markdown(
+        'Um **e-mail de confirmação** foi enviado para sua conta.\n\n'
+        'Você será **redirecionado automaticamente** para o '
+        '**Oráculo Analista** ao clicar abaixo.'
+    )
+    if st.button('Acessar o Oráculo Analista', use_container_width=True, key='dlg_senha_ok'):
+        st.session_state.pop('mostrar_dialog_senha_alterada', None)
+        st.rerun()
+
+
+def render_pagina_recuperar_senha():
+    st.markdown('## 🔑 Recuperar Minha Senha')
+    st.markdown(
+        'Informe o **e-mail cadastrado** em sua conta. Vamos validar e enviar '
+        'um link de redefinição de senha para você.'
+    )
+
+    with st.form('form_recuperar_senha'):
+        email = st.text_input('E-mail cadastrado', key='rec_email_input')
+        col1, col2 = st.columns(2)
+        with col1:
+            enviar = st.form_submit_button(
+                '📧 Enviar Link de Recuperação', use_container_width=True)
+        with col2:
+            voltar = st.form_submit_button(
+                '↩️ Voltar para Login', use_container_width=True)
+
+    if voltar:
+        st.session_state.tela_auth = 'login'
+        st.rerun()
+
+    if enviar:
+        if solicitar_recuperacao(email):
+            st.session_state.reset_email_destino = normalize_email(email)
+            st.session_state.tela_auth = 'login'
+            st.session_state.mostrar_dialog_email_enviado = True
+            st.rerun()
+
+    if st.session_state.get('mostrar_dialog_email_enviado'):
+        _dialog_email_enviado()
+
+
+def render_pagina_nova_senha(token: str):
+    st.markdown('## 🔐 Criar Nova Senha')
+
+    session = Session()
+    try:
+        reg = validar_token(session, PasswordReset, token)
+    finally:
+        session.close()
+
+    if not reg:
+        st.error(
+            'Link inválido ou expirado. Solicite uma nova recuperação de senha.')
+        if st.button('Voltar para Login'):
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.session_state.tela_auth = 'login'
+            st.rerun()
+        return
+
+    # Diálogo de boas-vindas ao chegar pelo link (uma vez por token)
+    flag_key = f'dialog_link_visto_{token[:12]}'
+    if not st.session_state.get(flag_key):
+        st.session_state.mostrar_dialog_link_validado = True
+        st.session_state[flag_key] = True
+
+    if st.session_state.get('mostrar_dialog_link_validado'):
+        _dialog_link_validado()
+
+    st.info(f'Redefinindo senha para: **{reg.email}**')
+
+    with st.form('form_nova_senha'):
+        nova = st.text_input('Nova senha', type='password', key='nova_senha_1')
+        confirmar = st.text_input(
+            'Confirmar nova senha', type='password', key='nova_senha_2')
+        salvar = st.form_submit_button(
+            '💾 Salvar Nova Senha', use_container_width=True)
+
+    if salvar:
+        if not nova or not confirmar:
+            st.error('Preencha os dois campos de senha.')
+            return
+        if len(nova) < 8:
+            st.error('A senha deve ter pelo menos 8 caracteres.')
+            return
+        if nova != confirmar:
+            st.error('As senhas não coincidem.')
+            return
+
+        ok, email = redefinir_senha(token, nova)
+        if not ok:
+            st.error(
+                'Não foi possível redefinir a senha. O link pode ter expirado.')
+            return
+
+        # Login automático
+        session2 = Session()
+        try:
+            user = session2.query(UserAnalise).filter_by(email=email).first()
+            if user:
+                st.session_state.user = user
+                st.session_state.logged_in = True
+                st.session_state.image = user.profile_image_path
+                st.session_state.codigo_confirmado = True
+        finally:
+            session2.close()
+
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+        st.session_state.tela_auth = 'login'
+        st.session_state.mostrar_dialog_senha_alterada = True
+        st.rerun()
+
+
+# =========================
 # Interface de autenticação
 # =========================
 def interface():
@@ -428,6 +700,13 @@ def interface():
                 st.session_state.logged_in = True
                 st.session_state.image = user.profile_image_path
                 st.rerun()
+
+        if st.sidebar.button('🔑 ESQUECI MINHA SENHA', use_container_width=True):
+            st.session_state.mostrar_dialog_iniciar_recuperacao = True
+            st.rerun()
+
+    if st.session_state.get('mostrar_dialog_iniciar_recuperacao'):
+        _dialog_iniciar_recuperacao()
 
     if 'temp_email' in st.session_state and not st.session_state.get('codigo_confirmado'):
         with st.sidebar:
@@ -503,7 +782,32 @@ def interface():
 # Landing / principal
 # =========================
 def main():
+    # Roteamento por link de recuperação no e-mail (?reset_token=...)
+    try:
+        token_url = st.query_params.get('reset_token')
+    except Exception:
+        token_url = None
+
+    if token_url and not st.session_state.get('logged_in'):
+        render_pagina_nova_senha(token_url)
+        if st.session_state.get('mostrar_dialog_senha_alterada'):
+            _dialog_senha_alterada()
+        return
+
+    if st.session_state.get('mostrar_dialog_senha_alterada'):
+        _dialog_senha_alterada()
+
     if not st.session_state.get('logged_in'):
+        # Tela de "Recuperar Minha Senha"
+        if st.session_state.get('tela_auth') == 'recuperar':
+            st.sidebar.title('Oráculo Analista')
+            st.sidebar.info('Modo: Recuperação de Senha')
+            if st.sidebar.button('↩️ Voltar para Login', use_container_width=True):
+                st.session_state.tela_auth = 'login'
+                st.rerun()
+            render_pagina_recuperar_senha()
+            return
+
         interface()
 
         st.markdown(
