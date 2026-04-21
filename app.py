@@ -701,9 +701,10 @@ def interface():
                 st.session_state.image = user.profile_image_path
                 st.rerun()
 
-        if st.sidebar.button('🔑 ESQUECI MINHA SENHA', use_container_width=True):
-            st.session_state.mostrar_dialog_iniciar_recuperacao = True
-            st.rerun()
+    st.sidebar.markdown('---')
+    if st.sidebar.button('🔑 ESQUECI MINHA SENHA', use_container_width=True):
+        st.session_state.mostrar_dialog_iniciar_recuperacao = True
+        st.rerun()
 
     if st.session_state.get('mostrar_dialog_iniciar_recuperacao'):
         _dialog_iniciar_recuperacao()
@@ -954,14 +955,6 @@ def main():
             """,
             unsafe_allow_html=True,
         )
-
-        st.markdown('---')
-        st.markdown(
-            "<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
-
-        if os.path.exists(VIDEO_PATH):
-            with open(VIDEO_PATH, 'rb') as video_file:
-                st.sidebar.video(video_file.read())
 
         st.markdown('---')
         st.markdown(
