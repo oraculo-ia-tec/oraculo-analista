@@ -21,24 +21,8 @@ from PyPDF2 import PdfReader
 # Configurações iniciais
 # =========================
 
-def _is_streamlit_cloud():
-    return os.getenv("STREAMLIT_SHARING_MODE") == "streamlit_app"
-
 def _get_secret(key, default=""):
-    """Lê .env em ambiente local e st.secrets no Streamlit Cloud."""
-    if _is_streamlit_cloud():
-        try:
-            if key in st.secrets:
-                return st.secrets[key]
-        except Exception:
-            pass
-        try:
-            if "groq" in st.secrets and key in st.secrets["groq"]:
-                return st.secrets["groq"][key]
-        except Exception:
-            pass
-        return default
-
+    """Prioriza .env local e usa st.secrets como fallback no Streamlit Cloud."""
     try:
         value = config(key, default=None)
         if value is not None:
@@ -46,7 +30,23 @@ def _get_secret(key, default=""):
     except Exception:
         pass
 
-    return os.getenv(key, default)
+    value = os.getenv(key)
+    if value is not None:
+        return value
+
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+
+    try:
+        if "groq" in st.secrets and key in st.secrets["groq"]:
+            return st.secrets["groq"][key]
+    except Exception:
+        pass
+
+    return default
 
 
 def get_groq_api_key():

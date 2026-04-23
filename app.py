@@ -32,21 +32,8 @@ LOGGER = logging.getLogger(__name__)
 config = AutoConfig()
 
 
-def is_streamlit_cloud() -> bool:
-    return os.getenv('STREAMLIT_SHARING_MODE') == 'streamlit_app'
-
-
 def get_setting(key: str, default=None):
-    """Lê .env em ambiente local e st.secrets no Streamlit Cloud."""
-    if is_streamlit_cloud():
-        try:
-            if key in st.secrets:
-                return st.secrets[key]
-        except Exception:
-            pass
-
-        return default
-
+    """Prioriza .env local e usa st.secrets como fallback no Streamlit Cloud."""
     try:
         value = config(key, default=None)
         if value is not None:
@@ -54,7 +41,23 @@ def get_setting(key: str, default=None):
     except Exception:
         pass
 
-    return os.getenv(key, default)
+    value = os.getenv(key)
+    if value is not None:
+        return value
+
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+
+    try:
+        if 'default' in st.secrets and key in st.secrets['default']:
+            return st.secrets['default'][key]
+    except Exception:
+        pass
+
+    return default
 
 
 DATABASE_URL = get_setting('DATABASE_URL', 'sqlite:///oraculo_analista.db')

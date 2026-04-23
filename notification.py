@@ -39,17 +39,22 @@ except Exception:
     GoogleRequest = None
 
 
-def is_streamlit_cloud() -> bool:
-    return os.getenv('STREAMLIT_SHARING_MODE') == 'streamlit_app'
-
-
 def get_setting(key: str, default=None):
-    if is_streamlit_cloud() and st is not None:
+  try:
+    value = config(key, default=None)
+    if value is not None:
+      return value
+  except Exception:
+    pass
+
+  value = os.getenv(key)
+  if value is not None:
+    return value
+
+  if st is not None:
         try:
-            # Tenta primeiro na seção [email]
             if 'email' in st.secrets and key in st.secrets['email']:
                 return st.secrets['email'][key]
-            # Depois no nível raiz
             if key in st.secrets:
                 value = st.secrets[key]
                 if hasattr(value, 'to_dict'):
@@ -58,16 +63,7 @@ def get_setting(key: str, default=None):
         except Exception:
             pass
 
-            return default
-
-    try:
-        value = config(key, default=None)
-        if value is not None:
-            return value
-    except Exception:
-        pass
-
-    return os.getenv(key, default)
+  return default
 
 
 class Notificador:
