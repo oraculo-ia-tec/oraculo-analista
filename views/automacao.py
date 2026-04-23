@@ -145,6 +145,6 @@ def render_automacao(Session, UserAnalise, Cargo):
 
         if dados:
             import pandas as pd
-            st.dataframe(pd.DataFrame(dados), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
         else:
             st.info("Nenhum usuário cadastrado.")

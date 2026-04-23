@@ -118,7 +118,7 @@ def render_banco_dados(Session, UserAnalise, Cargo, database_url: str = ""):
             df_filtrado = df_filtrado[df_filtrado["Verificado"] == "⏳ Pendente"]
 
         st.markdown(f"**{len(df_filtrado)} usuário(s) encontrado(s)**")
-        st.dataframe(df_filtrado, width="stretch", hide_index=True)
+        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
         # ── Exportar CSV ─────────────────────────────────────────────────────
         st.markdown("---")

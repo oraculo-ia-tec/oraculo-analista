@@ -33,7 +33,7 @@ def render_clientes(Session, UserAnalise, Cargo):
                 {"ID": c["id"], "Nome": c["name"], "Email": c["email"], "WhatsApp": c["whatsapp"], "Verificado": c["is_verified"]}
                 for c in clientes_data
             ])
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             st.metric("Total de Clientes", len(clientes_data))
         else:
             st.info("Nenhum cliente encontrado.")
