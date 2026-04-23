@@ -32,13 +32,20 @@ LOGGER = logging.getLogger(__name__)
 config = AutoConfig()
 
 
+def is_streamlit_cloud() -> bool:
+    return os.getenv('STREAMLIT_SHARING_MODE') == 'streamlit_app'
+
+
 def get_setting(key: str, default=None):
-    """Resolve configurações com prioridade para st.secrets e fallback local."""
-    try:
-        if key in st.secrets:
-            return st.secrets[key]
-    except Exception:
-        pass
+    """Lê .env em ambiente local e st.secrets no Streamlit Cloud."""
+    if is_streamlit_cloud():
+        try:
+            if key in st.secrets:
+                return st.secrets[key]
+        except Exception:
+            pass
+
+        return default
 
     try:
         value = config(key, default=None)

@@ -21,36 +21,53 @@ from PyPDF2 import PdfReader
 # Configurações iniciais
 # =========================
 
+def _is_streamlit_cloud():
+    return os.getenv("STREAMLIT_SHARING_MODE") == "streamlit_app"
+
 def _get_secret(key, default=""):
-    """Tenta st.secrets (Streamlit Cloud), depois .env (local)."""
+    """Lê .env em ambiente local e st.secrets no Streamlit Cloud."""
+    if _is_streamlit_cloud():
+        try:
+            if key in st.secrets:
+                return st.secrets[key]
+        except Exception:
+            pass
+        try:
+            if "groq" in st.secrets and key in st.secrets["groq"]:
+                return st.secrets["groq"][key]
+        except Exception:
+            pass
+        return default
+
     try:
-        # Nível raiz: GROQ_API_KEY = "..."
-        if key in st.secrets:
-            return st.secrets[key]
+        value = config(key, default=None)
+        if value is not None:
+            return value
     except Exception:
         pass
-    try:
-        # Dentro de seção [groq]: [groq] \n GROQ_API_KEY = "..."
-        if "groq" in st.secrets and key in st.secrets["groq"]:
-            return st.secrets["groq"][key]
-    except Exception:
-        pass
-    return config(key, default=default)
+
+    return os.getenv(key, default)
 
 
-GROQ_API_KEY = _get_secret("GROQ_API_KEY")
-MODEL_NAME = _get_secret("GROQ_MODEL", "llama-3.3-70b-versatile")
+def get_groq_api_key():
+    return _get_secret("GROQ_API_KEY")
+
+
+def get_groq_model():
+    return _get_secret("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 def validar_groq_config():
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY não configurada.")
+    if not get_groq_api_key():
+        raise ValueError(
+            "GROQ_API_KEY não configurada. Defina a variável no arquivo .env local ou em Streamlit secrets no deploy."
+        )
 
 
 def get_groq_client():
     validar_groq_config()
     from groq import Groq
-    return Groq(api_key=GROQ_API_KEY)
+    return Groq(api_key=get_groq_api_key())
 
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
@@ -132,7 +149,7 @@ def generate_groq_response(client, system_prompt, prompt, history=None):
     messages.append({"role": "user", "content": prompt})
 
     stream = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=get_groq_model(),
         messages=messages,
         temperature=0.1,
         max_tokens=1200,

@@ -39,8 +39,12 @@ except Exception:
     GoogleRequest = None
 
 
+def is_streamlit_cloud() -> bool:
+    return os.getenv('STREAMLIT_SHARING_MODE') == 'streamlit_app'
+
+
 def get_setting(key: str, default=None):
-    if st is not None:
+    if is_streamlit_cloud() and st is not None:
         try:
             # Tenta primeiro na seção [email]
             if 'email' in st.secrets and key in st.secrets['email']:
@@ -53,6 +57,8 @@ def get_setting(key: str, default=None):
                 return value
         except Exception:
             pass
+
+            return default
 
     try:
         value = config(key, default=None)
