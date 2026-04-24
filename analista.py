@@ -21,32 +21,54 @@ from PyPDF2 import PdfReader
 # Configurações iniciais
 # =========================
 
-def _get_secret(key, default=""):
-    """Prioriza .env local e usa st.secrets como fallback no Streamlit Cloud."""
+def _get_secret_with_source(key, default=""):
+    """Retorna valor e origem da configuração, sem expor o segredo."""
     try:
         value = config(key, default=None)
         if value is not None:
-            return value
+            return value, ".env"
     except Exception:
         pass
 
     value = os.getenv(key)
     if value is not None:
-        return value
+        return value, "os.environ"
 
     try:
         if key in st.secrets:
-            return st.secrets[key]
+            return st.secrets[key], "st.secrets"
     except Exception:
         pass
 
     try:
         if "groq" in st.secrets and key in st.secrets["groq"]:
-            return st.secrets["groq"][key]
+            return st.secrets["groq"][key], "st.secrets[groq]"
     except Exception:
         pass
 
-    return default
+    return default, "nao_encontrada"
+
+def _get_secret(key, default=""):
+    """Prioriza .env local e usa st.secrets como fallback no Streamlit Cloud."""
+    value, _ = _get_secret_with_source(key, default=default)
+    return value
+
+
+def get_groq_diagnostics():
+    _, key_source = _get_secret_with_source("GROQ_API_KEY")
+    _, model_source = _get_secret_with_source("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+    diagnostics = [f"GROQ_API_KEY origem: {key_source}"]
+    diagnostics.append(f"GROQ_MODEL origem: {model_source}")
+
+    try:
+        root_keys = list(st.secrets.keys())
+        diagnostics.append(f"st.secrets raiz contem GROQ_API_KEY: {'GROQ_API_KEY' in root_keys}")
+        diagnostics.append(f"st.secrets contem secao groq: {'groq' in root_keys}")
+    except Exception:
+        diagnostics.append("st.secrets indisponivel neste contexto")
+
+    return " | ".join(diagnostics)
 
 
 def get_groq_api_key():
@@ -60,7 +82,8 @@ def get_groq_model():
 def validar_groq_config():
     if not get_groq_api_key():
         raise ValueError(
-            "GROQ_API_KEY não configurada. Defina a variável no arquivo .env local ou em Streamlit secrets no deploy."
+            "GROQ_API_KEY não configurada. Defina a variável no arquivo .env local ou em Streamlit secrets no deploy. "
+            + get_groq_diagnostics()
         )
 
 
