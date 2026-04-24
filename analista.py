@@ -192,6 +192,30 @@ def atualizar_primeiro_nome():
             st.session_state["primeiro_nome"] = nome_completo.split()[0]
 
 
+def obter_primeiro_nome_usuario() -> str:
+    primeiro_nome = st.session_state.get("primeiro_nome")
+    if primeiro_nome:
+        return primeiro_nome
+
+    user = st.session_state.get("user")
+    if user and getattr(user, "name", None):
+        nome_completo = user.name.strip()
+        if nome_completo:
+            primeiro_nome = nome_completo.split()[0]
+            st.session_state["primeiro_nome"] = primeiro_nome
+            return primeiro_nome
+
+    nome = st.session_state.get("name")
+    if nome:
+        nome_completo = nome.strip()
+        if nome_completo:
+            primeiro_nome = nome_completo.split()[0]
+            st.session_state["primeiro_nome"] = primeiro_nome
+            return primeiro_nome
+
+    return "Usuário"
+
+
 def atualizar_imagem_perfil(email):
     normalized_email = (email or "").strip().lower().replace("/", "_").replace("\\", "_")
     image_path = os.path.join(PROFILE_IMAGES_DIR, f"{normalized_email}.png")
@@ -561,7 +585,7 @@ def oraculo_analista():
             )
 
     if "messages" not in st.session_state:
-        primeiro_nome = st.session_state.get("primeiro_nome", "Usuário")
+        primeiro_nome = obter_primeiro_nome_usuario()
         st.session_state.messages = [
             {
                 "role": "assistant",
@@ -698,8 +722,7 @@ def oraculo_analista():
 
             if intencao == "finalizar":
                 with st.chat_message("assistant", avatar=icons["assistant"]):
-                    primeiro_nome = st.session_state.get(
-                        "primeiro_nome", "Usuário")
+                    primeiro_nome = obter_primeiro_nome_usuario()
                     msg_final = f"😊 {primeiro_nome}, foi um prazer te ajudar! Você pode baixar o histórico da conversa nos formatos abaixo:"
                     st.markdown(msg_final)
 
@@ -754,7 +777,7 @@ def oraculo_analista():
                     Use prioritariamente os metadados e o resumo dos documentos abaixo.
                     Se a informação não estiver disponível no contexto resumido, diga isso claramente.
 
-                    O nome do usuário que está conversando com você é {st.session_state.get("primeiro_nome", "Usuário")}.
+                    O nome do usuário que está conversando com você é {obter_primeiro_nome_usuario()}.
                     Sempre chame o usuário pelo primeiro nome de forma amigável e cordial nas suas respostas.
 
                     Resumo dos documentos carregados:
