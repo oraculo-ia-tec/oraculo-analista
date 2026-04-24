@@ -1,5 +1,7 @@
 """Página Configuração — ajustes do sistema com tabs."""
 
+import os
+
 import streamlit as st
 import bcrypt
 
@@ -40,13 +42,20 @@ def render_configuracao(Session, UserAnalise, Cargo):
                     u.name = novo_nome
                     u.whatsapp = novo_whatsapp
                     if nova_imagem:
-                        import os
-                        path = f"./user_profiles/{u.email}.png"
+                        os.makedirs("./user_profiles/", exist_ok=True)
+                        safe_email = (u.email or "").strip().lower().replace("/", "_").replace("\\", "_")
+                        path = os.path.join("./user_profiles/", f"{safe_email}.png")
                         with open(path, "wb") as f:
                             f.write(nova_imagem.getbuffer())
                         u.profile_image_path = path
                     session.commit()
                     st.session_state.user_id = u.id
+                    if st.session_state.get("user") is not None:
+                        st.session_state.user.name = u.name
+                        st.session_state.user.whatsapp = u.whatsapp
+                        st.session_state.user.profile_image_path = u.profile_image_path
+                    st.session_state.name = u.name
+                    st.session_state.image = u.profile_image_path
                     st.success("Perfil atualizado!")
             except Exception as e:
                 session.rollback()

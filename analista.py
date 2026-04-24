@@ -193,7 +193,8 @@ def atualizar_primeiro_nome():
 
 
 def atualizar_imagem_perfil(email):
-    image_path = os.path.join(PROFILE_IMAGES_DIR, f"{email}.png")
+    normalized_email = (email or "").strip().lower().replace("/", "_").replace("\\", "_")
+    image_path = os.path.join(PROFILE_IMAGES_DIR, f"{normalized_email}.png")
     if os.path.exists(image_path):
         st.session_state.image = image_path
 
@@ -218,10 +219,12 @@ def obter_avatar_usuario():
             return path
     # Tenta buscar pelo e-mail do usuário logado
     if user and getattr(user, "email", None):
-        for ext in (".png", ".jpg", ".jpeg"):
-            candidate = os.path.join(PROFILE_IMAGES_DIR, f"{user.email}{ext}")
-            if os.path.exists(candidate):
-                return candidate
+        normalized_email = user.email.strip().lower().replace("/", "_").replace("\\", "_")
+        for email_candidate in [normalized_email, user.email]:
+            for ext in (".png", ".jpg", ".jpeg"):
+                candidate = os.path.join(PROFILE_IMAGES_DIR, f"{email_candidate}{ext}")
+                if os.path.exists(candidate):
+                    return candidate
     fallback = "./src/img/usuario.jpg"
     if os.path.exists(fallback):
         return fallback

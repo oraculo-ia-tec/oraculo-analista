@@ -198,6 +198,29 @@ def save_profile_image(image, user_email: str) -> str | None:
     return path
 
 
+def resolve_profile_image_path(profile_image_path: str | None, user_email: str | None) -> str | None:
+    candidates = []
+
+    if profile_image_path:
+        candidates.append(profile_image_path)
+
+    normalized_email = normalize_email(user_email) if user_email else ''
+    raw_email = (user_email or '').strip()
+
+    for email_candidate in [normalized_email, raw_email]:
+        if not email_candidate:
+            continue
+        safe_email = email_candidate.replace('/', '_').replace('\\', '_')
+        for ext in ('.png', '.jpg', '.jpeg'):
+            candidates.append(os.path.join(PROFILE_IMAGES_DIR, f'{safe_email}{ext}'))
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
 def send_to_make_webhook(data: dict) -> bool:
     if not WEBHOOK_CADASTRO_ANALISTA:
         st.error('Webhook não configurado.')
@@ -338,7 +361,10 @@ def verificar_codigo(email, codigo):
                 st.session_state.logged_in = True
                 st.session_state.codigo_confirmado = True
                 st.session_state.temp_email = None
-                st.session_state.image = user_fresh.profile_image_path if user_fresh else None
+                st.session_state.image = resolve_profile_image_path(
+                    user_fresh.profile_image_path if user_fresh else None,
+                    user_fresh.email if user_fresh else email,
+                )
                 st.rerun()
             finally:
                 session2.close()
@@ -628,7 +654,10 @@ def render_pagina_nova_senha(token: str):
             if user:
                 st.session_state.user = user
                 st.session_state.logged_in = True
-                st.session_state.image = user.profile_image_path
+                st.session_state.image = resolve_profile_image_path(
+                    user.profile_image_path,
+                    user.email,
+                )
                 st.session_state.codigo_confirmado = True
         finally:
             session2.close()
@@ -708,7 +737,10 @@ def interface():
             if user:
                 st.session_state.user = user
                 st.session_state.logged_in = True
-                st.session_state.image = user.profile_image_path
+                st.session_state.image = resolve_profile_image_path(
+                    user.profile_image_path,
+                    user.email,
+                )
                 st.rerun()
 
     st.sidebar.markdown('---')
@@ -993,8 +1025,9 @@ def main():
         # --- Sidebar: perfil ---
         st.sidebar.subheader(f'Bem-vindo(a), {user.name}')
 
-        if user.profile_image_path and os.path.exists(user.profile_image_path):
-            st.sidebar.image(user.profile_image_path, width=100)
+        avatar_path = resolve_profile_image_path(user.profile_image_path, user.email)
+        if avatar_path:
+            st.sidebar.image(avatar_path, width=100)
         elif os.path.exists('./src/img/usuario.jpg'):
             st.sidebar.image('./src/img/usuario.jpg', width=100)
 
