@@ -445,6 +445,10 @@ def _on_upload_change():
 
 def carregar_arquivos():
     """Upload e leitura de documentos na área principal."""
+    st.markdown(
+        "<div class='titulo-carregar-arquivo'>📁 CARREGAR ARQUIVO</div>",
+        unsafe_allow_html=True,
+    )
     col_upload, col_ler, col_limpar = st.columns([2, 1, 1])
 
     with col_upload:
@@ -619,16 +623,79 @@ def oraculo_analista():
             -webkit-text-fill-color: transparent;
             font-weight: bold;
         }
+        /* Avatar circular com borda neon pulsante */
+        .oraculo-avatar-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 18px 0 24px 0;
+        }
+        .oraculo-avatar {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid #00f0ff;
+            box-shadow:
+                0 0 12px #00f0ff,
+                0 0 24px #00f0ff,
+                0 0 48px #00f0ff,
+                inset 0 0 18px rgba(0, 240, 255, 0.45);
+            animation: oraculo-neon-pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes oraculo-neon-pulse {
+            0%, 100% {
+                box-shadow:
+                    0 0 10px #00f0ff,
+                    0 0 20px #00f0ff,
+                    0 0 40px #00f0ff,
+                    inset 0 0 14px rgba(0, 240, 255, 0.35);
+            }
+            50% {
+                box-shadow:
+                    0 0 18px #39ff14,
+                    0 0 36px #39ff14,
+                    0 0 64px #39ff14,
+                    inset 0 0 22px rgba(57, 255, 20, 0.45);
+                border-color: #39ff14;
+            }
+        }
+        /* Título "CARREGAR ARQUIVO" */
+        .titulo-carregar-arquivo {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: #22c55e;
+            text-transform: uppercase;
+            margin: 4px 0 8px 0;
+            text-shadow: 0 0 6px rgba(34, 197, 94, 0.55);
+        }
+        /* Borda verde no file_uploader */
+        div[data-testid="stFileUploader"] section,
+        div[data-testid="stFileUploaderDropzone"] {
+            border: 2px solid #22c55e !important;
+            border-radius: 10px !important;
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.45);
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f"<h1 class='title'>Análise rápida e precisa com o <span class='highlight-creme'>Oráculo</span> "
-        f"<span class='highlight-dourado'>Analista</span></h1>",
-        unsafe_allow_html=True,
-    )
+    avatar_path = "./src/img/perfil-analista.png"
+    if os.path.exists(avatar_path):
+        try:
+            with open(avatar_path, "rb") as _f:
+                _avatar_b64 = base64.b64encode(_f.read()).decode("utf-8")
+            st.markdown(
+                f"<div class='oraculo-avatar-wrapper'>"
+                f"<img class='oraculo-avatar' src='data:image/png;base64,{_avatar_b64}' alt='Oráculo Analista'/>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            pass
 
     if os.path.exists("./src/img/perfil-analista.png"):
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
