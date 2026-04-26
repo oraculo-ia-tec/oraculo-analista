@@ -426,13 +426,8 @@ def _dialog_confirmar_limpar():
             st.rerun()
     with col_b:
         if st.button("🧹 Sim, limpar", use_container_width=True, type="primary"):
-            primeiro_nome = obter_primeiro_nome_usuario()
-            st.session_state.messages = [
-                {
-                    "role": "assistant",
-                    "content": f'🌟 {primeiro_nome}, conversa limpa! O(s) documento(s) carregado(s) continua(m) disponível(is). Pergunte algo novo 💡',
-                }
-            ]
+            # Limpa apenas as mensagens do chat; documentos permanecem ativos
+            st.session_state.messages = []
             st.session_state.pop("confirmar_limpar", None)
             st.rerun()
 
@@ -450,16 +445,18 @@ def _on_upload_change():
 
 def carregar_arquivos():
     """Upload e leitura de documentos na área principal."""
-    uploaded_files = st.file_uploader(
-        "📎 Faça upload do seu documento para análise:",
-        type=["xlsx", "pdf", "xml", "json", "html",
-              "htm", "doc", "docx", "txt", "xls"],
-        accept_multiple_files=True,
-        key="uploader_analista",
-        on_change=_on_upload_change,
-    )
+    col_upload, col_ler, col_limpar = st.columns([2, 1, 1])
 
-    col_ler, col_limpar = st.columns(2)
+    with col_upload:
+        uploaded_files = st.file_uploader(
+            "📎 Upload do documento",
+            type=["xlsx", "pdf", "xml", "json", "html",
+                  "htm", "doc", "docx", "txt", "xls"],
+            accept_multiple_files=True,
+            key="uploader_analista",
+            on_change=_on_upload_change,
+            label_visibility="collapsed",
+        )
 
     with col_ler:
         btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True, type="primary")
@@ -637,25 +634,6 @@ def oraculo_analista():
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
     arquivos = carregar_arquivos()
-
-    # Indicador discreto dos documentos ativos (sem expor o conteúdo completo)
-    arquivos_salvos = st.session_state.get("arquivos_processados", [])
-    if arquivos_salvos:
-        chips = []
-        for i, arq in enumerate(arquivos_salvos):
-            nome = arq.get("name", f"Arquivo {i+1}")
-            extra = f" • {arq['pages']} páginas" if arq.get("pages") is not None else ""
-            chips.append(
-                f"<span style='display:inline-block; background:#ecfdf5; color:#065f46; "
-                f"border:1px solid #34d399; border-radius:999px; padding:4px 12px; "
-                f"margin:4px 6px 4px 0; font-size:13px;'>📄 {nome}{extra} ✅</span>"
-            )
-        st.markdown(
-            "<div style='margin: 6px 0 14px 0;'>"
-            "<small style='color:#6b7280;'>Documento(s) ativo(s) para análise:</small><br>"
-            + "".join(chips) + "</div>",
-            unsafe_allow_html=True,
-        )
 
     if "messages" not in st.session_state:
         primeiro_nome = obter_primeiro_nome_usuario()
