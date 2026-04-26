@@ -445,13 +445,13 @@ def _on_upload_change():
 
 def carregar_arquivos():
     """Upload e leitura de documentos na área principal."""
-    st.markdown(
-        "<div class='titulo-carregar-arquivo'>📁 CARREGAR ARQUIVO</div>",
-        unsafe_allow_html=True,
-    )
     col_upload, col_ler, col_limpar = st.columns([2, 1, 1])
 
     with col_upload:
+        st.markdown(
+            "<div class='titulo-carregar-arquivo'>📁 CARREGAR ARQUIVO</div>",
+            unsafe_allow_html=True,
+        )
         uploaded_files = st.file_uploader(
             "📎 Upload do documento",
             type=["xlsx", "pdf", "xml", "json", "html",
