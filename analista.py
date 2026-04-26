@@ -463,10 +463,17 @@ def carregar_arquivos():
         )
 
     with col_ler:
+        # spacer alinhando o topo do botão com o topo do uploader (compensa o título)
+        st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='botao-grande-wrapper'>", unsafe_allow_html=True)
         btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True, type="primary")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_limpar:
+        st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='botao-grande-wrapper'>", unsafe_allow_html=True)
         btn_limpar = st.button("🔄 Limpar Conversa", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if btn_limpar:
         # Limpa SOMENTE a conversa; mantém arquivos carregados/lidos
@@ -677,6 +684,17 @@ def oraculo_analista():
             border: 2px solid #22c55e !important;
             border-radius: 10px !important;
             box-shadow: 0 0 8px rgba(34, 197, 94, 0.45);
+        }
+        /* Padroniza altura do uploader e dos botões da mesma linha */
+        div[data-testid="stFileUploader"] section,
+        div[data-testid="stFileUploaderDropzone"] {
+            min-height: 110px !important;
+        }
+        .botao-grande-wrapper .stButton > button {
+            height: 110px !important;
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            border-radius: 10px !important;
         }
         </style>
         """,
