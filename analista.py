@@ -228,6 +228,11 @@ def configurar_usuario_logado(user):
     st.session_state.email = user.email
     st.session_state.image = user.profile_image_path
     st.session_state.primeiro_nome = user.name.split(" ")[0]
+    # Reseta o ciclo conversacional do Oráculo a cada novo login
+    st.session_state["_saudacao_dada"] = False
+    st.session_state["_qtd_uploads_sessao"] = 0
+    st.session_state["_novo_arquivo_recente"] = False
+    st.session_state["_novo_arquivo_nomes"] = []
 
 
 def obter_avatar_usuario():
@@ -494,9 +499,22 @@ def carregar_arquivos():
                 resultado = _processar_arquivo(file)
                 arquivos_processados.append(resultado)
 
+        # Mescla com arquivos já existentes (mantém histórico de uploads na sessão)
+        existentes = st.session_state.get("arquivos_processados", []) or []
+        nomes_existentes = {a.get("name") for a in existentes}
+        novos = [a for a in arquivos_processados if a.get("name") not in nomes_existentes]
+        consolidado = existentes + novos
+
+        # Sinaliza ao LLM que veio um novo lote de arquivos além do(s) primeiro(s)
+        qtd_uploads_anteriores = int(st.session_state.get("_qtd_uploads_sessao", 0))
+        if qtd_uploads_anteriores >= 1 and novos:
+            st.session_state["_novo_arquivo_recente"] = True
+            st.session_state["_novo_arquivo_nomes"] = [a.get("name", "") for a in novos]
+        st.session_state["_qtd_uploads_sessao"] = qtd_uploads_anteriores + 1
+
         # Salva no session_state antes do rerun para persistir os dados
-        st.session_state.arquivos_processados = arquivos_processados
-        st.session_state.full_content = obter_resumo_arquivos(arquivos_processados)
+        st.session_state.arquivos_processados = consolidado
+        st.session_state.full_content = obter_resumo_arquivos(consolidado)
         st.session_state.mostrar_dialog_leitura = True
         # Garante que o dialog de "upload" não apareça por cima
         st.session_state.pop("mostrar_dialog_upload", None)
@@ -912,26 +930,77 @@ def oraculo_analista():
                     historico_reduzido = montar_historico_reduzido(
                         max_mensagens=6)
 
+                    primeiro_nome_user = obter_primeiro_nome_usuario()
+                    tem_documento = bool(arquivos)
+                    saudacao_pendente = not bool(st.session_state.get("_saudacao_dada", False))
+                    novo_arquivo_recente = bool(st.session_state.get("_novo_arquivo_recente", False))
+                    nomes_novos = st.session_state.get("_novo_arquivo_nomes", []) or []
+                    nomes_novos_str = ", ".join(f'"{n}"' for n in nomes_novos) if nomes_novos else ""
+
+                    bloco_estado = f"""
+                    ESTADO ATUAL DA CONVERSA (use estritamente para decidir o tom da resposta):
+                    - tem_documento_carregado: {tem_documento}
+                    - eh_primeira_resposta_da_sessao: {saudacao_pendente}
+                    - novo_arquivo_recem_carregado: {novo_arquivo_recente}
+                    - nomes_dos_novos_arquivos: [{nomes_novos_str}]
+                    """
+
                     system_prompt = f"""
-                    Você é o Oráculo Analista, doutor e especialista em análise de dados.
-                    Sua missão é responder com objetividade, precisão e clareza.
-                    Use prioritariamente os metadados e o resumo dos documentos abaixo.
-                    Se a informação não estiver disponível no contexto resumido, diga isso claramente.
+                    Você é o Oráculo Analista, um especialista (doutor) em análise de dados
+                    e leitura crítica de documentos. Sua personalidade é: amigável,
+                    educado, didático (gosta de ensinar passo a passo) e altamente
+                    inteligente, com tom acolhedor de um professor experiente.
 
-                    O nome do usuário que está conversando com você é {obter_primeiro_nome_usuario()}.
+                    O nome do usuário é {primeiro_nome_user}.
 
-                    Diretrizes de tratamento ao usuário (IMPORTANTE — siga rigorosamente):
-                    - NÃO inicie as respostas com saudações como "Olá", "Oi", "Bom dia", etc.
-                    - NÃO repita o primeiro nome do usuário em toda mensagem. Use o nome dele
-                      no MÁXIMO uma vez a cada 4 ou 5 respostas, e somente quando fizer sentido
-                      (por exemplo, ao concluir uma análise importante ou ao mudar de assunto).
-                    - Vá DIRETO ao ponto da resposta, sem preâmbulos. Comece pelo conteúdo
-                      relevante (fato, número, conclusão, lista, etc.).
-                    - Mantenha um tom profissional, cordial e objetivo, como um especialista
-                      experiente que respeita o tempo do interlocutor.
-                    - Evite frases genéricas de fechamento do tipo "Se precisar de mais
-                      informações, basta perguntar"; só inclua quando realmente houver algo
-                      a ser esclarecido.
+                    {bloco_estado}
+
+                    REGRAS DE ESCOPO (obrigatórias):
+                    1. Você SÓ pode tratar de assuntos relacionados ao(s) documento(s)
+                       que o usuário carregou nesta sessão. Qualquer pergunta fora desse
+                       escopo (notícias, opiniões pessoais, código genérico, outros temas)
+                       deve ser educadamente recusada com uma frase como:
+                       "Esse tema foge do escopo do(s) documento(s) que estamos analisando.
+                        Posso te ajudar com algo do conteúdo carregado?"
+                    2. Se tem_documento_carregado for False, NÃO responda nenhuma pergunta
+                       de conteúdo. Insista, com cordialidade e firmeza, para que o usuário
+                       carregue um arquivo: peça que clique em 📁 CARREGAR ARQUIVO,
+                       depois em 📖 LER DOCUMENTO. Reforce a cada nova tentativa do
+                       usuário sem perder a paciência, sempre amigável.
+
+                    REGRAS DE SAUDAÇÃO E USO DO NOME:
+                    3. Se eh_primeira_resposta_da_sessao for True E tem_documento_carregado
+                       for True: cumprimente o usuário UMA Única vez pelo primeiro nome
+                       (ex.: "Olá, {primeiro_nome_user}!") e, NA MESMA mensagem, já
+                       responda objetivamente o que foi perguntado. Não crie mensagens
+                       separadas só para saudação.
+                    4. Se eh_primeira_resposta_da_sessao for True E tem_documento_carregado
+                       for False: cumprimente UMA vez pelo nome e oriente o usuário a
+                       carregar um documento.
+                    5. Se eh_primeira_resposta_da_sessao for False: NÃO cumprimente,
+                       NÃO comece com "Olá", "Oi", "Bom dia" etc., e EVITE repetir o
+                       primeiro nome. Use o nome no máximo uma vez a cada 4 ou 5
+                       respostas e apenas quando fizer sentido (mudança importante de
+                       assunto, conclusão relevante).
+                    6. Se novo_arquivo_recem_carregado for True E a pergunta do usuário
+                       for sobre o novo arquivo (ou sobre tema do novo arquivo), comece
+                       a resposta EXATAMENTE com o padrão:
+                       "{primeiro_nome_user} neste novo arquivo que carregou..."
+                       e prossiga respondendo objetivamente. Use esse padrão apenas
+                       quando o tema do novo arquivo for abordado pelo usuário.
+                       Se a pergunta não for sobre o novo arquivo, ignore a regra 6 e siga
+                       a regra 5.
+
+                    REGRAS DE ESTILO:
+                    7. Vá direto ao ponto. Comece pelo conteúdo relevante (fato, número,
+                       conclusão, lista). Sem preâmbulos longos.
+                    8. Mantenha tom amigável, didático, profissional e cordial. Quando
+                       explicar algo técnico, ensine como um bom professor faria.
+                    9. Evite frases genéricas de encerramento como "Se precisar de mais
+                       informações, basta perguntar". Só inclua se houver algo concreto
+                       a esclarecer.
+                    10. Se a informação solicitada não estiver no resumo abaixo, diga
+                        isso com clareza, sem inventar.
 
                     Resumo dos documentos carregados:
                     {resumir_texto_para_contexto(contexto_resumido, limite=12000)}
@@ -962,6 +1031,12 @@ def oraculo_analista():
                     st.session_state.messages.append(
                         {"role": "assistant", "content": clean_response}
                     )
+
+                    # Marca que a saudação inicial já foi feita nesta sessão
+                    # e consome a flag de "novo arquivo recém carregado".
+                    st.session_state["_saudacao_dada"] = True
+                    st.session_state["_novo_arquivo_recente"] = False
+                    st.session_state["_novo_arquivo_nomes"] = []
 
                 except Exception as e:
                     st.error(f"Erro ao gerar análise: {str(e)}")
