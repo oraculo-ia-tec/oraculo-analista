@@ -366,19 +366,86 @@ def _processar_arquivo(file):
     return resultado
 
 
-@st.dialog("📄 Leitura Concluída!")
-def _dialog_leitura_concluida():
+@st.dialog("� Arquivo Carregado")
+def _dialog_arquivo_carregado():
     st.markdown(
-        "O **Oráculo Analista** finalizou a leitura do(s) documento(s) com sucesso! 🎉\n\n"
-        "Agora você pode iniciar suas perguntas no **chat abaixo**. "
-        "Pergunte qualquer coisa sobre o conteúdo: resumos, análises, "
-        "dados específicos, comparações e muito mais.\n\n"
-        "💡 **Dica:** Seja específico nas perguntas para obter respostas mais precisas."
+        """
+        <div style="text-align:center; padding:18px 8px;">
+            <p style="font-size:22px; font-weight:700; line-height:1.4; text-transform:uppercase; margin:0;">
+                VOCÊ ACABOU DE CARREGAR SEU ARQUIVO!<br>
+                AGORA CLIQUE NO BOTÃO LER DOCUMENTO PARA O ORÁCULO ANALISTA
+                LER E ENTENDER DO QUE SE TRATA.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if st.button("Entendi, vamos começar!", use_container_width=True):
-        st.session_state.pop("mostrar_dialog_leitura", None)
-        st.session_state.pop("mostrar_balloons", None)
+    if st.button("OK, entendi!", use_container_width=True, type="primary"):
+        st.session_state.pop("mostrar_dialog_upload", None)
         st.rerun()
+
+
+@st.dialog("✅ Leitura Concluída")
+def _dialog_leitura_concluida():
+    # Borda verde ao redor do conteúdo do dialog + mensagem em caixa alta
+    st.markdown(
+        """
+        <style>
+            div[role="dialog"] { border: 3px solid #22c55e !important; border-radius: 12px !important; }
+        </style>
+        <div style="text-align:center; padding:18px 8px; border:3px solid #22c55e;
+                    border-radius:10px; background:rgba(34,197,94,0.08);">
+            <p style="font-size:22px; font-weight:700; line-height:1.4; text-transform:uppercase; margin:0; color:#15803d;">
+                O ORÁCULO ANALISTA FEZ A LEITURA E ENTENDEU TODO O DOCUMENTO
+                CARREGADO, INICIE SEU ESTUDO OU ANÁLISE
+            </p>
+            <p style="margin-top:12px; font-size:13px; color:#16a34a;">
+                Esta janela fechará automaticamente em 5 segundos…
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # Auto-fechamento após 5 segundos
+    time.sleep(5)
+    st.session_state.pop("mostrar_dialog_leitura", None)
+    st.rerun()
+
+
+@st.dialog("🔄 Limpar Conversa")
+def _dialog_confirmar_limpar():
+    st.markdown(
+        "Deseja realmente limpar a **conversa**?\n\n"
+        "📄 O(s) documento(s) já carregado(s) serão **mantidos** para que você "
+        "possa continuar suas análises sem precisar enviá-los novamente."
+    )
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("❌ Cancelar", use_container_width=True):
+            st.session_state.pop("confirmar_limpar", None)
+            st.rerun()
+    with col_b:
+        if st.button("🧹 Sim, limpar", use_container_width=True, type="primary"):
+            primeiro_nome = obter_primeiro_nome_usuario()
+            st.session_state.messages = [
+                {
+                    "role": "assistant",
+                    "content": f'🌟 {primeiro_nome}, conversa limpa! O(s) documento(s) carregado(s) continua(m) disponível(is). Pergunte algo novo 💡',
+                }
+            ]
+            st.session_state.pop("confirmar_limpar", None)
+            st.rerun()
+
+
+def _on_upload_change():
+    """Callback do file_uploader: dispara o dialog de orientação após upload."""
+    arquivos = st.session_state.get("uploader_analista") or []
+    if arquivos:
+        nomes = [getattr(a, "name", "") for a in arquivos]
+        # Só mostra o dialog quando um conjunto novo de arquivos é carregado
+        if st.session_state.get("_ultimos_uploads") != nomes:
+            st.session_state["_ultimos_uploads"] = nomes
+            st.session_state["mostrar_dialog_upload"] = True
 
 
 def carregar_arquivos():
@@ -388,6 +455,8 @@ def carregar_arquivos():
         type=["xlsx", "pdf", "xml", "json", "html",
               "htm", "doc", "docx", "txt", "xls"],
         accept_multiple_files=True,
+        key="uploader_analista",
+        on_change=_on_upload_change,
     )
 
     col_ler, col_limpar = st.columns(2)
@@ -399,10 +468,11 @@ def carregar_arquivos():
         btn_limpar = st.button("🔄 Limpar Conversa", use_container_width=True)
 
     if btn_limpar:
-        st.session_state.messages = []
-        st.session_state.full_content = ""
-        st.session_state.arquivos_processados = []
-        st.rerun()
+        # Limpa SOMENTE a conversa; mantém arquivos carregados/lidos
+        st.session_state["confirmar_limpar"] = True
+
+    if st.session_state.get("confirmar_limpar"):
+        _dialog_confirmar_limpar()
 
     arquivos_processados = []
 
@@ -419,18 +489,16 @@ def carregar_arquivos():
         # Salva no session_state antes do rerun para persistir os dados
         st.session_state.arquivos_processados = arquivos_processados
         st.session_state.full_content = obter_resumo_arquivos(arquivos_processados)
-        st.session_state.mostrar_balloons = True
-        st.rerun()
-
-    # Exibe balloons primeiro, depois agenda o dialog
-    if st.session_state.get("mostrar_balloons"):
-        st.balloons()
-        st.session_state.pop("mostrar_balloons", None)
         st.session_state.mostrar_dialog_leitura = True
-        import time
-        time.sleep(2)
+        # Garante que o dialog de "upload" não apareça por cima
+        st.session_state.pop("mostrar_dialog_upload", None)
         st.rerun()
 
+    # Dialog logo após o upload (antes da leitura)
+    if st.session_state.get("mostrar_dialog_upload"):
+        _dialog_arquivo_carregado()
+
+    # Dialog após leitura concluída (com borda verde, fecha em 5s)
     if st.session_state.get("mostrar_dialog_leitura"):
         _dialog_leitura_concluida()
 
@@ -570,19 +638,24 @@ def oraculo_analista():
 
     arquivos = carregar_arquivos()
 
-    # Exibe conteúdo dos arquivos já processados (persistido no session_state)
+    # Indicador discreto dos documentos ativos (sem expor o conteúdo completo)
     arquivos_salvos = st.session_state.get("arquivos_processados", [])
     if arquivos_salvos:
-        st.subheader("Conteúdo dos Arquivos Carregados:")
+        chips = []
         for i, arq in enumerate(arquivos_salvos):
-            titulo = f"{arq.get('name', f'Arquivo {i+1}')}"
-            if arq.get("pages") is not None:
-                titulo += f" | {arq['pages']} páginas"
-            st.text_area(
-                titulo,
-                resumir_texto_para_contexto(arq.get("text", ""), limite=3000),
-                height=200,
+            nome = arq.get("name", f"Arquivo {i+1}")
+            extra = f" • {arq['pages']} páginas" if arq.get("pages") is not None else ""
+            chips.append(
+                f"<span style='display:inline-block; background:#ecfdf5; color:#065f46; "
+                f"border:1px solid #34d399; border-radius:999px; padding:4px 12px; "
+                f"margin:4px 6px 4px 0; font-size:13px;'>📄 {nome}{extra} ✅</span>"
             )
+        st.markdown(
+            "<div style='margin: 6px 0 14px 0;'>"
+            "<small style='color:#6b7280;'>Documento(s) ativo(s) para análise:</small><br>"
+            + "".join(chips) + "</div>",
+            unsafe_allow_html=True,
+        )
 
     if "messages" not in st.session_state:
         primeiro_nome = obter_primeiro_nome_usuario()
@@ -729,6 +802,11 @@ def oraculo_analista():
                 st.session_state.messages.append(
                     {"role": "assistant", "content": msg_final}
                 )
+
+                # Fim da sessão: descarta os documentos carregados/lidos
+                st.session_state["arquivos_processados"] = []
+                st.session_state["full_content"] = ""
+                st.session_state.pop("_ultimos_uploads", None)
 
                 chat_text = [
                     {"role": m["role"], "content": m["content"]}
