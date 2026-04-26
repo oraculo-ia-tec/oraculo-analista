@@ -919,7 +919,19 @@ def oraculo_analista():
                     Se a informação não estiver disponível no contexto resumido, diga isso claramente.
 
                     O nome do usuário que está conversando com você é {obter_primeiro_nome_usuario()}.
-                    Sempre chame o usuário pelo primeiro nome de forma amigável e cordial nas suas respostas.
+
+                    Diretrizes de tratamento ao usuário (IMPORTANTE — siga rigorosamente):
+                    - NÃO inicie as respostas com saudações como "Olá", "Oi", "Bom dia", etc.
+                    - NÃO repita o primeiro nome do usuário em toda mensagem. Use o nome dele
+                      no MÁXIMO uma vez a cada 4 ou 5 respostas, e somente quando fizer sentido
+                      (por exemplo, ao concluir uma análise importante ou ao mudar de assunto).
+                    - Vá DIRETO ao ponto da resposta, sem preâmbulos. Comece pelo conteúdo
+                      relevante (fato, número, conclusão, lista, etc.).
+                    - Mantenha um tom profissional, cordial e objetivo, como um especialista
+                      experiente que respeita o tempo do interlocutor.
+                    - Evite frases genéricas de fechamento do tipo "Se precisar de mais
+                      informações, basta perguntar"; só inclua quando realmente houver algo
+                      a ser esclarecido.
 
                     Resumo dos documentos carregados:
                     {resumir_texto_para_contexto(contexto_resumido, limite=12000)}
