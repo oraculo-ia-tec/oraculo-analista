@@ -209,7 +209,7 @@ def render_dashboard(Session, UserAnalise, Cargo):
         df_display["Verificado"] = df_display["Verificado"].map({True: "✅", False: "⏳"})
         st.dataframe(
             df_display[["Nome", "Email", "Cargo", "Verificado"]],
-            width='stretch',
+            use_container_width=True,
             hide_index=True,
             height=220,
         )

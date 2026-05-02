@@ -114,6 +114,6 @@ def render_configuracao(Session, UserAnalise, Cargo):
                 cargos = session.query(Cargo).all()
                 import pandas as pd
                 df = pd.DataFrame([{"ID": c.id, "Nome": c.nome} for c in cargos])
-                st.dataframe(df, width='stretch', hide_index=True)
+                st.dataframe(df, use_container_width=True, hide_index=True)
             finally:
                 session.close()

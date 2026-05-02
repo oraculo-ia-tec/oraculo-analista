@@ -32,7 +32,7 @@ def render_parceiros(Session, UserAnalise, Cargo):
                 {"ID": p["id"], "Nome": p["name"], "Email": p["email"], "WhatsApp": p["whatsapp"], "Verificado": p["is_verified"]}
                 for p in parceiros_data
             ])
-            st.dataframe(df, width='stretch', hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             st.metric("Total de Parceiros", len(parceiros_data))
         else:
             st.info("Nenhum parceiro encontrado.")

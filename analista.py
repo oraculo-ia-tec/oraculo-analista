@@ -385,7 +385,7 @@ def _dialog_arquivo_carregado():
         """,
         unsafe_allow_html=True,
     )
-    if st.button("OK, entendi!", width='stretch', type="primary"):
+    if st.button("OK, entendi!", use_container_width=True, type="primary"):
         st.session_state.pop("mostrar_dialog_upload", None)
         st.rerun()
 
@@ -426,11 +426,11 @@ def _dialog_confirmar_limpar():
     )
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("❌ Cancelar", width='stretch'):
+        if st.button("❌ Cancelar", use_container_width=True):
             st.session_state.pop("confirmar_limpar", None)
             st.rerun()
     with col_b:
-        if st.button("🧹 Sim, limpar", width='stretch', type="primary"):
+        if st.button("🧹 Sim, limpar", use_container_width=True, type="primary"):
             # Limpa apenas as mensagens do chat; documentos permanecem ativos
             st.session_state.messages = []
             st.session_state.pop("confirmar_limpar", None)
@@ -471,13 +471,13 @@ def carregar_arquivos():
         # spacer alinhando o topo do botão com o topo do uploader (compensa o título)
         st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
         st.markdown("<div class='botao-grande-wrapper'>", unsafe_allow_html=True)
-        btn_ler = st.button("📖 LER DOCUMENTO", width='stretch', type="primary")
+        btn_ler = st.button("📖 LER DOCUMENTO", use_container_width=True, type="primary")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_limpar:
         st.markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
         st.markdown("<div class='botao-grande-wrapper'>", unsafe_allow_html=True)
-        btn_limpar = st.button("🔄 Limpar Conversa", width='stretch')
+        btn_limpar = st.button("🔄 Limpar Conversa", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     if btn_limpar:

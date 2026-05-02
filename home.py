@@ -132,7 +132,7 @@ Com suas vantagens e benefícios, ele não só facilita a tomada de decisões, m
 
 # Botão de Chamada à Ação
 st.markdown('<div style="text-align: center; margin-top: 40px;">', unsafe_allow_html=True)
-if st.button("Comece Agora ➡️", width='stretch'):
+if st.button("Comece Agora ➡️", use_container_width=True):
     st.write("Redirecionando para o cadastro...")
     # Aqui você pode adicionar a lógica para redirecionar o usuário para a página de cadastro
 st.markdown('</div>', unsafe_allow_html=True)
