@@ -87,7 +87,7 @@ with st.spinner("Carregando dados..."):
                 "id": "ID do Pagamento"
             })
             df["Status"] = df["Status"].map(STATUS_TRANSLATE)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, width='stretch')
 
     except Exception as e:
         st.error(f"Erro ao buscar pagamentos: {e}")

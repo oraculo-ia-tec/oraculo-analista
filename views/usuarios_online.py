@@ -67,7 +67,7 @@ def render_usuarios_online(Session, UserAnalise, Cargo):
                     [{"Nome": u["name"], "Email": u["email"], "Cargo": u["cargo"], "Visto às": u["Último acesso"]}
                      for u in online]
                 )
-                st.dataframe(df_on, use_container_width=True, hide_index=True)
+                st.dataframe(df_on, width='stretch', hide_index=True)
             else:
                 st.info("Nenhum usuário online no momento.")
 
@@ -80,7 +80,7 @@ def render_usuarios_online(Session, UserAnalise, Cargo):
                     [{"Nome": u["name"], "Email": u["email"], "Cargo": u["cargo"], "Último acesso": u["Último acesso"]}
                      for u in offline]
                 )
-                st.dataframe(df_off, use_container_width=True, hide_index=True)
+                st.dataframe(df_off, width='stretch', hide_index=True)
             else:
                 st.info("Nenhum usuário offline.")
 

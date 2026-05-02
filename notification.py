@@ -1,6 +1,8 @@
 import base64
 import logging
 import os
+import smtplib
+import ssl
 from datetime import datetime
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -29,7 +31,8 @@ LOGGER = logging.getLogger(__name__)
 config = AutoConfig()
 GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
-LOGO_PATH = os.path.join(os.path.dirname(__file__), 'src', 'img', 'perfil-analista.png')
+LOGO_PATH = os.path.join(os.path.dirname(
+    __file__), 'src', 'img', 'perfil-analista.png')
 
 try:
     from google.oauth2.credentials import Credentials as OAuthCredentials
@@ -40,18 +43,18 @@ except Exception:
 
 
 def get_setting(key: str, default=None):
-  try:
-    value = config(key, default=None)
+    try:
+        value = config(key, default=None)
+        if value is not None:
+            return value
+    except Exception:
+        pass
+
+    value = os.getenv(key)
     if value is not None:
-      return value
-  except Exception:
-    pass
+        return value
 
-  value = os.getenv(key)
-  if value is not None:
-    return value
-
-  if st is not None:
+    if st is not None:
         try:
             if 'email' in st.secrets and key in st.secrets['email']:
                 return st.secrets['email'][key]
@@ -63,25 +66,30 @@ def get_setting(key: str, default=None):
         except Exception:
             pass
 
-  return default
+    return default
 
 
 class Notificador:
     """
-    Envia e-mails pela Gmail API usando OAuth2 com refresh token.
+    Envia e-mails via Gmail SMTP (App Password) ou Gmail API (OAuth2).
 
-    Configuração esperada em st.secrets ([email]) ou .env:
+    Configuração preferida em st.secrets ([email]) ou .env:
+    - GMAIL_APP_PASSWORD  (senha de app gerada em myaccount.google.com/apppasswords)
+    - EMAIL_REMETENTE     (endereço do remetente)
+
+    Fallback OAuth2 (legado):
     - GOOGLE_CLIENT_ID
     - GOOGLE_CLIENT_SECRET
     - GMAIL_REFRESH_TOKEN
-    - EMAIL_REMETENTE   (endereço do remetente)
     """
 
     def __init__(self):
-        self.client_id      = get_setting('GOOGLE_CLIENT_ID')
-        self.client_secret  = get_setting('GOOGLE_CLIENT_SECRET')
-        self.refresh_token  = get_setting('GMAIL_REFRESH_TOKEN')
-        self.sender_email   = get_setting('EMAIL_REMETENTE')
+        raw_pw = get_setting('GMAIL_APP_PASSWORD') or ''
+        self.app_password = raw_pw.replace(' ', '') or None
+        self.client_id = get_setting('GOOGLE_CLIENT_ID')
+        self.client_secret = get_setting('GOOGLE_CLIENT_SECRET')
+        self.refresh_token = get_setting('GMAIL_REFRESH_TOKEN')
+        self.sender_email = get_setting('EMAIL_REMETENTE')
 
     def _build_service(self):
         if OAuthCredentials is None or GoogleRequest is None:
@@ -121,29 +129,65 @@ class Notificador:
     # Envio interno
     # ------------------------------------------------------------------
 
-    def _send_raw(self, mime_msg) -> bool:
-        """Serializa e envia uma mensagem MIME via Gmail API."""
-        if not self.sender_email:
-            raise RuntimeError('GMAIL_SENDER_EMAIL ou GMAIL_DELEGATED_USER não configurado.')
+    def _send_via_smtp(self, mime_msg) -> bool:
+        """Envia uma mensagem MIME via Gmail SMTP com App Password."""
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.ehlo()
+                server.starttls(context=context)
+                server.login(self.sender_email, self.app_password)
+                server.send_message(mime_msg)
+            LOGGER.info('Email enviado (SMTP) para %s', mime_msg['to'])
+            return True
+        except smtplib.SMTPAuthenticationError as e:
+            raise RuntimeError(
+                'Falha de autenticação SMTP. Verifique se GMAIL_APP_PASSWORD está correto '
+                'e se a verificação em duas etapas está ativa na conta Gmail.'
+            ) from e
+        except Exception as e:
+            LOGGER.exception(
+                'Erro ao enviar e-mail via SMTP para %s', mime_msg.get('to', ''))
+            raise RuntimeError(f'Erro ao enviar e-mail via SMTP: {e}') from e
+
+    def _send_via_api(self, mime_msg) -> bool:
+        """Envia uma mensagem MIME via Gmail API (OAuth2 — legado)."""
         try:
             service = self._build_service()
-            raw_message = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
-            service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
-            LOGGER.info('Email enviado para %s', mime_msg['to'])
+            raw_message = base64.urlsafe_b64encode(
+                mime_msg.as_bytes()).decode()
+            service.users().messages().send(
+                userId='me', body={'raw': raw_message}).execute()
+            LOGGER.info('Email enviado (API) para %s', mime_msg['to'])
             return True
         except RefreshError as e:
             error_text = str(e)
             if 'unauthorized_client' in error_text.lower():
                 raise RuntimeError(
-                    'Google API retornou unauthorized_client. Isso normalmente indica que a service account '
-                    'não está autorizada para Domain-Wide Delegation no Google Workspace, que o escopo '
-                    'https://www.googleapis.com/auth/gmail.send não foi autorizado no Admin Console, ou que '
-                    'o usuário delegado não pertence ao domínio Workspace autorizado.'
+                    'Google API retornou unauthorized_client. O cliente OAuth não está autorizado '
+                    'para o grant type refresh_token. Verifique se o tipo do cliente no Google Cloud '
+                    'Console é "App para computador" (Desktop app), não "Aplicativo da Web". '
+                    'Recomendado: configure GMAIL_APP_PASSWORD para usar SMTP em vez de OAuth.'
                 ) from e
-            raise RuntimeError(f'Falha de autenticação na Google API: {e}') from e
+            raise RuntimeError(
+                f'Falha de autenticação na Google API: {e}') from e
         except Exception as e:
-            LOGGER.exception('Erro inesperado ao enviar e-mail para %s', mime_msg.get('to', ''))
+            LOGGER.exception(
+                'Erro inesperado ao enviar e-mail para %s', mime_msg.get('to', ''))
             raise RuntimeError(f'Erro inesperado ao enviar e-mail: {e}') from e
+
+    def _send_raw(self, mime_msg) -> bool:
+        """Envia via SMTP (preferido) ou Gmail API (fallback OAuth2)."""
+        if not self.sender_email:
+            raise RuntimeError('EMAIL_REMETENTE não configurado.')
+        if self.app_password:
+            return self._send_via_smtp(mime_msg)
+        if self.refresh_token:
+            return self._send_via_api(mime_msg)
+        raise RuntimeError(
+            'Nenhum método de envio configurado. Adicione GMAIL_APP_PASSWORD '
+            '(recomendado) ou GMAIL_REFRESH_TOKEN em secrets.toml.'
+        )
 
     def _build_mime_com_logo(self, destino: str, assunto: str, html_body: str) -> MIMEMultipart:
         """
@@ -164,7 +208,8 @@ class Notificador:
         if logo_bytes:
             img = MIMEImage(logo_bytes, _subtype='png')
             img.add_header('Content-ID', '<oraculo_logo>')
-            img.add_header('Content-Disposition', 'inline', filename='logo.png')
+            img.add_header('Content-Disposition',
+                           'inline', filename='logo.png')
             outer.attach(img)
 
         return outer
@@ -176,7 +221,8 @@ class Notificador:
     def enviar_email(self, destino: str, assunto: str, mensagem: str) -> bool:
         """Envia um e-mail HTML simples (sem imagem embutida)."""
         if not self.sender_email:
-            raise RuntimeError('GMAIL_SENDER_EMAIL ou GMAIL_DELEGATED_USER não configurado.')
+            raise RuntimeError(
+                'GMAIL_SENDER_EMAIL ou GMAIL_DELEGATED_USER não configurado.')
 
         msg = MIMEText(mensagem, 'html', 'utf-8')
         msg['to'] = destino

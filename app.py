@@ -509,7 +509,7 @@ def _dialog_iniciar_recuperacao():
         'criar uma nova senha.\n\n'
         '⏱️ O link tem validade de **60 minutos** e só pode ser utilizado uma vez.'
     )
-    if st.button('Continuar', use_container_width=True, key='dlg_rec_continuar'):
+    if st.button('Continuar', width='stretch', key='dlg_rec_continuar'):
         st.session_state.pop('mostrar_dialog_iniciar_recuperacao', None)
         st.session_state.tela_auth = 'recuperar'
         st.rerun()
@@ -526,7 +526,7 @@ def _dialog_email_enviado():
         '📂 Caso não encontre, verifique também a pasta de **spam** ou '
         '**lixo eletrônico**.'
     )
-    if st.button('Entendi', use_container_width=True, key='dlg_email_ok'):
+    if st.button('Entendi', width='stretch', key='dlg_email_ok'):
         st.session_state.pop('mostrar_dialog_email_enviado', None)
         st.rerun()
 
@@ -541,7 +541,7 @@ def _dialog_link_validado():
         '- **Não reutilize** senhas antigas.\n\n'
         'Você precisará digitar a senha **duas vezes** para confirmar.'
     )
-    if st.button('Continuar', use_container_width=True, key='dlg_link_ok'):
+    if st.button('Continuar', width='stretch', key='dlg_link_ok'):
         st.session_state.pop('mostrar_dialog_link_validado', None)
         st.rerun()
 
@@ -554,7 +554,7 @@ def _dialog_senha_alterada():
         'Você será **redirecionado automaticamente** para o '
         '**Oráculo Analista** ao clicar abaixo.'
     )
-    if st.button('Acessar o Oráculo Analista', use_container_width=True, key='dlg_senha_ok'):
+    if st.button('Acessar o Oráculo Analista', width='stretch', key='dlg_senha_ok'):
         st.session_state.pop('mostrar_dialog_senha_alterada', None)
         st.rerun()
 
@@ -571,10 +571,10 @@ def render_pagina_recuperar_senha():
         col1, col2 = st.columns(2)
         with col1:
             enviar = st.form_submit_button(
-                '📧 Enviar Link de Recuperação', use_container_width=True)
+                '📧 Enviar Link de Recuperação', width='stretch')
         with col2:
             voltar = st.form_submit_button(
-                '↩️ Voltar para Login', use_container_width=True)
+                '↩️ Voltar para Login', width='stretch')
 
     if voltar:
         st.session_state.tela_auth = 'login'
@@ -628,7 +628,7 @@ def render_pagina_nova_senha(token: str):
         confirmar = st.text_input(
             'Confirmar nova senha', type='password', key='nova_senha_2')
         salvar = st.form_submit_button(
-            '💾 Salvar Nova Senha', use_container_width=True)
+            '💾 Salvar Nova Senha', width='stretch')
 
     if salvar:
         if not nova or not confirmar:
@@ -744,7 +744,7 @@ def interface():
                 st.rerun()
 
     st.sidebar.markdown('---')
-    if st.sidebar.button('🔑 ESQUECI MINHA SENHA', use_container_width=True):
+    if st.sidebar.button('🔑 ESQUECI MINHA SENHA', width='stretch'):
         st.session_state.mostrar_dialog_iniciar_recuperacao = True
         st.rerun()
 
@@ -845,7 +845,7 @@ def main():
         if st.session_state.get('tela_auth') == 'recuperar':
             st.sidebar.title('Oráculo Analista')
             st.sidebar.info('Modo: Recuperação de Senha')
-            if st.sidebar.button('↩️ Voltar para Login', use_container_width=True):
+            if st.sidebar.button('↩️ Voltar para Login', width='stretch'):
                 st.session_state.tela_auth = 'login'
                 st.rerun()
             render_pagina_recuperar_senha()

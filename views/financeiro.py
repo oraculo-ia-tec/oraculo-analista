@@ -67,4 +67,4 @@ def render_financeiro(Session, UserAnalise, Cargo):
                 {"Usuário": "Exemplo 2", "Valor": 149.90, "Status": "PENDENTE", "Data": "02/04/2026"},
             ]
             df = pd.DataFrame(dados_demo)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
