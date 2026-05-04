@@ -1,4 +1,3 @@
-import base64
 import logging
 import os
 import smtplib
@@ -11,35 +10,17 @@ from email.mime.text import MIMEText
 from decouple import AutoConfig
 
 try:
-    from google.auth.exceptions import RefreshError
-except Exception:
-    RefreshError = Exception
-
-try:
     import streamlit as st
 except Exception:
     st = None
-
-try:
-    from googleapiclient.discovery import build
-except Exception:
-    build = None
 
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 config = AutoConfig()
-GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 LOGO_PATH = os.path.join(os.path.dirname(
     __file__), 'src', 'img', 'perfil-analista.png')
-
-try:
-    from google.oauth2.credentials import Credentials as OAuthCredentials
-    from google.auth.transport.requests import Request as GoogleRequest
-except Exception:
-    OAuthCredentials = None
-    GoogleRequest = None
 
 
 def get_setting(key: str, default=None):
@@ -69,50 +50,36 @@ def get_setting(key: str, default=None):
     return default
 
 
+def _as_bool(value, default: bool = False) -> bool:
+  if value is None:
+    return default
+  if isinstance(value, bool):
+    return value
+  return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 class Notificador:
     """
-    Envia e-mails via Gmail SMTP (App Password) ou Gmail API (OAuth2).
+    Envia e-mails via servidor SMTP configurado em .env ou st.secrets.
 
-    Configuração preferida em st.secrets ([email]) ou .env:
-    - GMAIL_APP_PASSWORD  (senha de app gerada em myaccount.google.com/apppasswords)
-    - EMAIL_REMETENTE     (endereço do remetente)
-
-    Fallback OAuth2 (legado):
-    - GOOGLE_CLIENT_ID
-    - GOOGLE_CLIENT_SECRET
-    - GMAIL_REFRESH_TOKEN
+    Variáveis esperadas:
+    - EMAIL_HOST
+    - EMAIL_PORT
+    - EMAIL_USERNAME
+    - EMAIL_PASSWORD
+    - EMAIL_USE_TLS
+    - EMAIL_USE_SSL
+    - EMAIL_REMETENTE
     """
 
     def __init__(self):
-        raw_pw = get_setting('GMAIL_APP_PASSWORD') or ''
-        self.app_password = raw_pw.replace(' ', '') or None
-        self.client_id = get_setting('GOOGLE_CLIENT_ID')
-        self.client_secret = get_setting('GOOGLE_CLIENT_SECRET')
-        self.refresh_token = get_setting('GMAIL_REFRESH_TOKEN')
+        self.smtp_host = get_setting('EMAIL_HOST')
+        self.smtp_port = int(get_setting('EMAIL_PORT', 0) or 0)
+        self.smtp_username = get_setting('EMAIL_USERNAME')
+        self.smtp_password = get_setting('EMAIL_PASSWORD')
+        self.use_tls = _as_bool(get_setting('EMAIL_USE_TLS'), default=True)
+        self.use_ssl = _as_bool(get_setting('EMAIL_USE_SSL'), default=False)
         self.sender_email = get_setting('EMAIL_REMETENTE')
-
-    def _build_service(self):
-        if OAuthCredentials is None or GoogleRequest is None:
-            raise RuntimeError(
-                'Dependências do Google API não instaladas. '
-                'Adicione google-auth, google-auth-oauthlib e google-api-python-client.'
-            )
-        if not all([self.client_id, self.client_secret, self.refresh_token]):
-            raise RuntimeError(
-                'Credenciais OAuth2 não configuradas. Verifique GOOGLE_CLIENT_ID, '
-                'GOOGLE_CLIENT_SECRET e GMAIL_REFRESH_TOKEN em secrets.toml ou .env.'
-            )
-
-        creds = OAuthCredentials(
-            token=None,
-            refresh_token=self.refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            scopes=GMAIL_SCOPES,
-        )
-        creds.refresh(GoogleRequest())
-        return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
     # ------------------------------------------------------------------
     # Logo helper
@@ -130,64 +97,43 @@ class Notificador:
     # ------------------------------------------------------------------
 
     def _send_via_smtp(self, mime_msg) -> bool:
-        """Envia uma mensagem MIME via Gmail SMTP com App Password."""
+        """Envia uma mensagem MIME via servidor SMTP configurado."""
+        if not all([self.smtp_host, self.smtp_port, self.smtp_username, self.smtp_password]):
+            raise RuntimeError(
+                'Configuração SMTP incompleta. Verifique EMAIL_HOST, EMAIL_PORT, '
+                'EMAIL_USERNAME e EMAIL_PASSWORD.'
+            )
+        if self.use_ssl and self.use_tls:
+            raise RuntimeError(
+                'EMAIL_USE_TLS e EMAIL_USE_SSL não podem ser verdadeiros ao mesmo tempo.'
+            )
+
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server_class = smtplib.SMTP_SSL if self.use_ssl else smtplib.SMTP
+            with server_class(self.smtp_host, self.smtp_port) as server:
                 server.ehlo()
-                server.starttls(context=context)
-                server.login(self.sender_email, self.app_password)
+                if self.use_tls and not self.use_ssl:
+                    server.starttls(context=context)
+                    server.ehlo()
+                server.login(self.smtp_username, self.smtp_password)
                 server.send_message(mime_msg)
             LOGGER.info('Email enviado (SMTP) para %s', mime_msg['to'])
             return True
         except smtplib.SMTPAuthenticationError as e:
             raise RuntimeError(
-                'Falha de autenticação SMTP. Verifique se GMAIL_APP_PASSWORD está correto '
-                'e se a verificação em duas etapas está ativa na conta Gmail.'
+                'Falha de autenticação SMTP. Verifique EMAIL_USERNAME e EMAIL_PASSWORD.'
             ) from e
         except Exception as e:
             LOGGER.exception(
                 'Erro ao enviar e-mail via SMTP para %s', mime_msg.get('to', ''))
             raise RuntimeError(f'Erro ao enviar e-mail via SMTP: {e}') from e
 
-    def _send_via_api(self, mime_msg) -> bool:
-        """Envia uma mensagem MIME via Gmail API (OAuth2 — legado)."""
-        try:
-            service = self._build_service()
-            raw_message = base64.urlsafe_b64encode(
-                mime_msg.as_bytes()).decode()
-            service.users().messages().send(
-                userId='me', body={'raw': raw_message}).execute()
-            LOGGER.info('Email enviado (API) para %s', mime_msg['to'])
-            return True
-        except RefreshError as e:
-            error_text = str(e)
-            if 'unauthorized_client' in error_text.lower():
-                raise RuntimeError(
-                    'Google API retornou unauthorized_client. O cliente OAuth não está autorizado '
-                    'para o grant type refresh_token. Verifique se o tipo do cliente no Google Cloud '
-                    'Console é "App para computador" (Desktop app), não "Aplicativo da Web". '
-                    'Recomendado: configure GMAIL_APP_PASSWORD para usar SMTP em vez de OAuth.'
-                ) from e
-            raise RuntimeError(
-                f'Falha de autenticação na Google API: {e}') from e
-        except Exception as e:
-            LOGGER.exception(
-                'Erro inesperado ao enviar e-mail para %s', mime_msg.get('to', ''))
-            raise RuntimeError(f'Erro inesperado ao enviar e-mail: {e}') from e
-
     def _send_raw(self, mime_msg) -> bool:
-        """Envia via SMTP (preferido) ou Gmail API (fallback OAuth2)."""
+        """Envia via SMTP."""
         if not self.sender_email:
             raise RuntimeError('EMAIL_REMETENTE não configurado.')
-        if self.app_password:
-            return self._send_via_smtp(mime_msg)
-        if self.refresh_token:
-            return self._send_via_api(mime_msg)
-        raise RuntimeError(
-            'Nenhum método de envio configurado. Adicione GMAIL_APP_PASSWORD '
-            '(recomendado) ou GMAIL_REFRESH_TOKEN em secrets.toml.'
-        )
+        return self._send_via_smtp(mime_msg)
 
     def _build_mime_com_logo(self, destino: str, assunto: str, html_body: str) -> MIMEMultipart:
         """
@@ -221,8 +167,7 @@ class Notificador:
     def enviar_email(self, destino: str, assunto: str, mensagem: str) -> bool:
         """Envia um e-mail HTML simples (sem imagem embutida)."""
         if not self.sender_email:
-            raise RuntimeError(
-                'GMAIL_SENDER_EMAIL ou GMAIL_DELEGATED_USER não configurado.')
+            raise RuntimeError('EMAIL_REMETENTE não configurado.')
 
         msg = MIMEText(mensagem, 'html', 'utf-8')
         msg['to'] = destino
