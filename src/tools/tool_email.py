@@ -1,7 +1,12 @@
 """
-Tool de envio de e-mail via Gmail API OAuth2.
-Substitui o envio_email_real.py com interface padronizada de tool.
+Tool de envio de e-mail via SMTP Hostinger.
+Usa as variáveis de ambiente definidas no .env do projeto.
+Nenhuma credencial hardcoded neste arquivo.
 """
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any, Dict
 
 from src.tools.base import BaseTool, ToolRegistry
@@ -10,10 +15,10 @@ from src.tools.base import BaseTool, ToolRegistry
 class ToolEmail(BaseTool):
     name = "tool_email"
     description = (
-        "Envia um e-mail para um destinatário via Gmail. "
+        "Envia um e-mail para um destinatário via servidor SMTP Hostinger. "
         "Use quando o usuário solicitar envio de relatório, "
         "resumo de análise ou qualquer comunicação por e-mail. "
-        "SEMPRE peça confirmação do usuário antes de enviar."
+        "SEMPRE peça confirmação explícita do usuário antes de enviar."
     )
     plan_required = "pro"  # apenas plano Pro ou superior
 
@@ -58,45 +63,50 @@ class ToolEmail(BaseTool):
         return True, ""
 
     def _execute(self, parameters: Dict[str, Any]) -> Any:
-        import base64
-        import os
-        from email.mime.text import MIMEText
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
+        # --- Leitura das credenciais do .env (nunca hardcoded) ---
+        host = os.getenv("EMAIL_HOST", "smtp.hostinger.com")
+        port = int(os.getenv("EMAIL_PORT", "587"))
+        username = os.getenv("EMAIL_USERNAME", "")
+        password = os.getenv("EMAIL_PASSWORD", "")
+        use_tls = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+        remetente = os.getenv("EMAIL_REMETENTE", username)
+
+        if not username or not password:
+            raise EnvironmentError(
+                "Credenciais de e-mail não configuradas. "
+                "Defina EMAIL_USERNAME e EMAIL_PASSWORD no arquivo .env"
+            )
 
         to = parameters["to"]
         subject = parameters["subject"]
         body = parameters["body"]
         is_html = parameters.get("is_html", False)
 
-        # Carrega credenciais do tokens.json (gerado por gerar_refresh_token_gmail.py)
-        token_path = os.path.join(os.path.dirname(__file__), "..", "..", "tokens.json")
-        if not os.path.exists(token_path):
-            raise FileNotFoundError(
-                "tokens.json não encontrado. "
-                "Execute gerar_refresh_token_gmail.py primeiro."
-            )
+        # --- Monta a mensagem MIME ---
+        msg = MIMEMultipart("alternative")
+        msg["From"] = remetente
+        msg["To"] = to
+        msg["Subject"] = subject
 
-        creds = Credentials.from_authorized_user_file(token_path)
-        service = build("gmail", "v1", credentials=creds)
-
-        # Monta a mensagem
         mime_type = "html" if is_html else "plain"
-        message = MIMEText(body, mime_type)
-        message["to"] = to
-        message["subject"] = subject
+        msg.attach(MIMEText(body, mime_type, "utf-8"))
 
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        result = service.users().messages().send(
-            userId="me",
-            body={"raw": raw}
-        ).execute()
+        # --- Envia via SMTP com STARTTLS ---
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            server.ehlo()
+            if use_tls:
+                server.starttls()
+                server.ehlo()
+            server.login(username, password)
+            server.sendmail(remetente, [to], msg.as_string())
 
         return {
             "status": "enviado",
-            "message_id": result.get("id"),
+            "from": remetente,
             "to": to,
             "subject": subject,
+            "host": host,
+            "port": port,
         }
 
 

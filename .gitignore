@@ -1,34 +1,63 @@
-# Pastas e arquivos gerados automaticamente
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Ambientes virtuais
+venv/
+env/
+.venv/
+.env/
+
+# ⚠️ CREDENCIAIS — NUNCA commitar estes arquivos
+.env
+secrets.toml
+tokens.json
+credentials.json
+*.pem
+*.key
+
+# Banco de dados (contém dados reais de usuários)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs e resultados de debug
+resultado_envio.txt
 *.log
 
-# Ambiente virtual
-venv/
-ENV/
+# Uploads temporários de usuários
+uploads/
+tmp/
+temp/
 
-# Dependências locais
-/node_modules
-/.vscode
+# Streamlit
+.streamlit/secrets.toml
 
-# Variáveis de ambiente
-.env
-config.yaml
-config_handler.py
-tokens.json
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
 
-0.26.0
-0.26.0'
+# macOS
+.DS_Store
 
-.streamlit
+# Windows
+Thumbs.db
+ehthumbs.db
 
-db.sqlite3
-oraculo-coach
+# Jupyter
+.ipynb_checkpoints/
 
-.xlsx
-.html
-Lib/
-Scripts/
-
-teste.py
-user_profiles
+# Cobertura de testes
+htmlcov/
+.coverage
+.pytest_cache/
