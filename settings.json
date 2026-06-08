@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "file_read": "allow",
+    "file_write": "ask",
+    "web_search": "allow",
+    "export": "allow",
+    "delete": "deny"
+  },
+  "max_file_size_mb": 20,
+  "allowed_extensions": ["pdf", "xlsx", "xls", "csv", "txt", "md"],
+  "debug_mode": false
+}
