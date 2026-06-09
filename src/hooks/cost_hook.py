@@ -1,61 +1,54 @@
-"""
-Cost Hook — monitora e limita o custo de tokens por sessão.
-Bloqueio preventivo antes de tools que consomem muitos tokens.
-"""
-from typing import Optional
-from src.hooks.base import BaseHook
-from src.types.base import ToolCall, ToolResult
-from src.constants.settings import MAX_TOKENS_FREE_PLAN, MAX_TOKENS_PRO_PLAN
+# ============================================================
+# src/hooks/cost_hook.py
+# Hook de custo — intercepta toda chamada ao LLM e acumula
+# o gasto estimado da sessão (estilo Claude Code costHook)
+# ============================================================
+from ..utils.helpers import estimate_tokens
+from ..constants.settings import COST_PER_1M_INPUT_TOKENS, COST_PER_1M_OUTPUT_TOKENS
 
 
-class CostHook(BaseHook):
+class CostHook:
     """
-    Bloqueia execução de tools quando o usuário está próximo do limite de tokens.
-    Limites por plano:
-      free:       50.000 tokens/sessão
-      pro:       500.000 tokens/sessão
-      enterprise: ilimitado
+    Rastreia tokens consumidos e custo acumulado na sessão.
+
+    Uso:
+        hook = CostHook()
+        hook.on_request(system_prompt + user_prompt)
+        hook.on_response(assistant_text)
+        print(hook.summary())
     """
 
-    # Tools que consomem muitos tokens (bloqueadas próximo ao limite)
-    HEAVY_TOOLS = {"tool_pdf", "tool_excel", "tool_web_search"}
+    def __init__(self):
+        self.input_tokens  = 0
+        self.output_tokens = 0
+        self._calls        = 0
 
-    def __init__(self, session):
-        self.session = session
+    def on_request(self, prompt_text: str) -> None:
+        """Chamado antes de enviar ao LLM."""
+        self.input_tokens += estimate_tokens(prompt_text)
+        self._calls += 1
 
-    def before_tool(self, tool_call: ToolCall) -> Optional[ToolResult]:
-        plan = self.session.user.plan
-        tokens_used = self.session.total_tokens
+    def on_response(self, response_text: str) -> None:
+        """Chamado após receber a resposta do LLM."""
+        self.output_tokens += estimate_tokens(response_text)
 
-        # Enterprise: sem limite
-        if plan == "enterprise":
-            return None
+    @property
+    def cost_usd(self) -> float:
+        """Custo estimado em USD."""
+        input_cost  = (self.input_tokens  / 1_000_000) * COST_PER_1M_INPUT_TOKENS
+        output_cost = (self.output_tokens / 1_000_000) * COST_PER_1M_OUTPUT_TOKENS
+        return round(input_cost + output_cost, 6)
 
-        limit = MAX_TOKENS_PRO_PLAN if plan == "pro" else MAX_TOKENS_FREE_PLAN
-        usage_pct = tokens_used / limit if limit > 0 else 0
+    def summary(self) -> dict:
+        return {
+            "calls":         self._calls,
+            "input_tokens":  self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens":  self.input_tokens + self.output_tokens,
+            "cost_usd":      self.cost_usd,
+        }
 
-        # Bloqueia tools pesadas quando acima de 90% do limite
-        if usage_pct >= 0.90 and tool_call.tool_name in self.HEAVY_TOOLS:
-            return ToolResult(
-                tool_name=tool_call.tool_name,
-                success=False,
-                error=(
-                    f"⚠️ Limite de uso próximo ({usage_pct:.0%}). "
-                    f"Operações pesadas bloqueadas. "
-                    f"Upgrade para o plano Pro para continuar."
-                ),
-            )
-
-        # Bloqueia tudo quando acima de 100%
-        if usage_pct >= 1.0:
-            return ToolResult(
-                tool_name=tool_call.tool_name,
-                success=False,
-                error="🚫 Limite de tokens esgotado para esta sessão.",
-            )
-
-        return None
-
-    def after_tool(self, tool_call: ToolCall, result: ToolResult) -> ToolResult:
-        # Não modifica o resultado — apenas monitora
-        return result
+    def reset(self) -> None:
+        self.input_tokens  = 0
+        self.output_tokens = 0
+        self._calls        = 0

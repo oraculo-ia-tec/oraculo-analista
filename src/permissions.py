@@ -1,63 +1,53 @@
-"""
-Permissions — gerencia as permissões globais do sistema.
-Lê configurações do settings.json e expõe verificações simples.
-"""
-import json
-import os
-from typing import Literal
-
-SETTINGS_PATH = "settings.json"
-
-ActionType = Literal["allow", "deny", "ask"]
+# ============================================================
+# src/permissions.py
+# Sistema de permissões allow / ask / deny
+# Baseado na arquitetura de permissões do Claude Code
+# ============================================================
+from .constants.settings import DEFAULT_PERMISSIONS
 
 
-DEFAULT_SETTINGS = {
-    "permissions": {
-        "file_read": "allow",
-        "file_write": "ask",
-        "web_search": "allow",
-        "export": "allow",
-        "delete": "deny",
-    },
-    "max_file_size_mb": 20,
-    "allowed_extensions": ["pdf", "xlsx", "xls", "csv", "txt", "md"],
-    "debug_mode": False,
-}
+class PermissionError(Exception):
+    """Levantada quando uma ação é negada pelo sistema de permissões."""
 
 
 class Permissions:
     """
-    Gerencia permissões de ações do sistema.
-    Carrega do settings.json; usa defaults se não existir.
+    Gerencia as permissões da sessão atual.
+
+    Regras:
+        allow  → executa diretamente
+        ask    → retorna False (UI deve confirmar antes)
+        deny   → levanta PermissionError
     """
 
-    def __init__(self):
-        self._settings = self._load()
+    def __init__(self, overrides: dict | None = None):
+        self._rules = {**DEFAULT_PERMISSIONS, **(overrides or {})}
 
-    def _load(self) -> dict:
-        if os.path.exists(SETTINGS_PATH):
-            try:
-                with open(SETTINGS_PATH, encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, OSError):
-                pass
-        return DEFAULT_SETTINGS.copy()
+    def check(self, action: str) -> bool:
+        """
+        Verifica se `action` está permitida.
 
-    def check(self, action: str) -> ActionType:
-        """Retorna 'allow', 'deny' ou 'ask' para uma ação."""
-        return self._settings.get("permissions", {}).get(action, "allow")
+        Returns:
+            True  → permitida
+            False → requer confirmação do usuário
+        Raises:
+            PermissionError → negada
+        """
+        rule = self._rules.get(action, "ask")
 
-    def is_allowed(self, action: str) -> bool:
-        return self.check(action) == "allow"
+        if rule == "allow":
+            return True
+        if rule == "deny":
+            raise PermissionError(
+                f"Ação '{action}' negada pelas permissões da sessão."
+            )
+        # ask
+        return False
 
-    def is_extension_allowed(self, filename: str) -> bool:
-        ext = filename.lower().split(".")[-1]
-        allowed = self._settings.get("allowed_extensions", [])
-        return ext in allowed
+    def set(self, action: str, rule: str) -> None:
+        """Atualiza uma regra em tempo de execução."""
+        assert rule in ("allow", "ask", "deny"), f"Regra inválida: {rule}"
+        self._rules[action] = rule
 
-    def max_file_size_mb(self) -> int:
-        return self._settings.get("max_file_size_mb", 20)
-
-
-# Instância global — importada onde necessário
-permissions = Permissions()
+    def as_dict(self) -> dict:
+        return dict(self._rules)

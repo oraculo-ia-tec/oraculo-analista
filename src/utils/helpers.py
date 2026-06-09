@@ -1,91 +1,51 @@
-"""
-Funções utilitárias reutilizáveis em todo o sistema.
-"""
-import uuid
+# ============================================================
+# src/utils/helpers.py
+# Utilitários reutilizáveis em todo o projeto
+# ============================================================
 import re
-import os
-from pathlib import Path
+import time
+import uuid
+from datetime import datetime
 
 
 def generate_id(prefix: str = "") -> str:
-    """
-    Gera um ID único com prefixo opcional.
-    Exemplo: generate_id("session") → "session_a3f9b2c1"
-    """
-    short_id = str(uuid.uuid4()).replace("-", "")[:12]
-    return f"{prefix}_{short_id}" if prefix else short_id
+    """Gera um ID único com prefixo opcional."""
+    uid = str(uuid.uuid4()).replace("-", "")[:12]
+    return f"{prefix}{uid}" if prefix else uid
 
 
-def format_file_size(size_bytes: int) -> str:
-    """
-    Formata tamanho em bytes para string legível.
-    Exemplo: format_file_size(1_048_576) → "1.0 MB"
-    """
-    for unit in ["B", "KB", "MB", "GB"]:
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
+def now_iso() -> str:
+    """Retorna timestamp ISO 8601 atual."""
+    return datetime.utcnow().isoformat() + "Z"
 
 
-def truncate_text(text: str, max_chars: int = 500, suffix: str = "...") -> str:
-    """
-    Trunca texto para um número máximo de caracteres.
-    """
-    if len(text) <= max_chars:
+def truncate(text: str, limit: int = 12000) -> str:
+    """Trunca texto ao limite de caracteres com aviso."""
+    if not text:
+        return ""
+    text = text.strip()
+    if len(text) <= limit:
         return text
-    return text[:max_chars - len(suffix)] + suffix
+    return text[:limit] + "\n\n[Conteúdo truncado por limite de contexto.]"
 
 
-def sanitize_filename(filename: str) -> str:
-    """
-    Remove caracteres inválidos de um nome de arquivo.
-    Exemplo: sanitize_filename("meu arquivo (1).pdf") → "meu_arquivo_1.pdf"
-    """
-    # Remove caracteres especiais exceto ponto, hífen e underscore
-    clean = re.sub(r"[^\w\s.-]", "", filename)
-    # Substitui espaços por underscore
-    clean = re.sub(r"\s+", "_", clean)
-    return clean.strip("._")
+def strip_think_tags(text: str) -> str:
+    """Remove blocos <think>...</think> do output do LLM."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def estimate_tokens(text: str) -> int:
-    """
-    Estimativa simples de tokens: ~4 caracteres por token.
-    Usada para controle de custo antes de chamar a API.
-    """
+    """Estimativa rápida: ~4 chars por token."""
     return max(1, len(text) // 4)
 
 
-def get_file_extension(filepath: str) -> str:
-    """
-    Retorna a extensão do arquivo em minúsculas.
-    Exemplo: get_file_extension("relatorio.PDF") → ".pdf"
-    """
-    return Path(filepath).suffix.lower()
-
-
-def safe_read_file(filepath: str, encoding: str = "utf-8") -> str:
-    """
-    Lê um arquivo de texto com tratamento de erro.
-    Retorna string vazia se o arquivo não existir.
-    """
-    try:
-        with open(filepath, "r", encoding=encoding) as f:
-            return f.read()
-    except (FileNotFoundError, PermissionError, UnicodeDecodeError):
-        return ""
-
-
-def safe_write_file(filepath: str, content: str, encoding: str = "utf-8") -> bool:
-    """
-    Escreve conteúdo em um arquivo, criando diretórios se necessário.
-    Retorna True se bem-sucedido.
-    """
-    try:
-        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-        with open(filepath, "w", encoding=encoding) as f:
-            f.write(content)
-        return True
-    except (PermissionError, OSError):
-        return False
+def retry(func, retries: int = 3, delay: float = 1.5):
+    """Executa `func` com retentativas em caso de exceção."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return func()
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            time.sleep(delay * (attempt + 1))
+    raise last_exc

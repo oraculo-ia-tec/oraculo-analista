@@ -1,127 +1,178 @@
-"""
-Runtime — Oráculo Analista v2.0
+# ============================================================
+# src/runtime.py
+# Runtime principal — gerencia o loop de sessão agêntica
+# Equivalente ao runtime.py do Claude Code
+# ============================================================
+from __future__ import annotations
 
-Gerencia o ciclo de vida completo de uma sessão:
-  1. Inicializa todos os hooks (permissão, custo, auditoria)
-  2. Registra os hooks na HookChain global
-  3. Expõe método único process() para o app.py
-  4. Finaliza a sessão (salva memória, logs)
+import streamlit as st
+from decouple import config
 
-Uma instância de Runtime por sessão do usuário.
-"""
-import os
-from typing import Generator, Optional
-
-from src.cost_tracker import CostTracker
-from src.hooks.audit_hook import AuditHook
-from src.hooks.base import hook_chain
-from src.hooks.cost_hook import CostHook
-from src.hooks.permission_hook import PermissionHook
-from src.memory.memory_manager import MemoryManager
-from src.memory.session_store import SessionStore
-from src.query_engine import QueryEngine
-from src.query_engine_factory import create_engine
-from src.utils.helpers import generate_id
+from .constants.settings import (
+    APP_NAME,
+    DEFAULT_MODEL,
+    MAX_TOKENS_FREE_PLAN,
+    MAX_TOKENS_PRO_PLAN,
+    MAX_CONTEXT_CHARS,
+)
+from .query_engine import QueryEngine
+from .permissions import Permissions
+from .hooks.cost_hook import CostHook
+from .hooks.audit_hook import AuditHook
+from .tools.registry import ToolRegistry
+from .tools.file_tools import FileReadTool
+from .tools.search_tool import WebSearchTool
+from .tools.export_tool import ExportTool
+from .utils.helpers import truncate, generate_id, now_iso
 
 
 class Runtime:
     """
-    Orquestrador de sessão.
-    Instanciado uma vez por login no app.py e armazenado no st.session_state.
+    Orquestra o loop completo de uma sessão:
+
+      1. Inicializa hooks, tools, permissões e QueryEngine
+      2. Recebe o input do usuário
+      3. Monta o system prompt com contexto de arquivos + tools
+      4. Chama o QueryEngine (que chama o LLM)
+      5. Persiste a mensagem no histórico
+      6. Retorna o texto gerado
+
+    Design: um Runtime por sessão Streamlit.
     """
 
     def __init__(
         self,
-        user_id: str,
-        user_name: str = "",
-        user_email: str = "",
-        user_plan: str = "free",
+        api_key: str | None = None,
+        model: str = DEFAULT_MODEL,
+        max_tokens: int = MAX_TOKENS_FREE_PLAN,
+        permission_overrides: dict | None = None,
     ):
-        self.user_id = user_id
-        self.user_name = user_name
-        self.user_email = user_email
-        self.user_plan = user_plan
+        self.session_id  = generate_id("sess_")
+        self.started_at  = now_iso()
 
-        # Componentes principais
-        self.engine: QueryEngine = create_engine(
-            user_id=user_id,
-            user_name=user_name,
-            user_email=user_email,
-            user_plan=user_plan,
+        # ── Hooks ────────────────────────────────────────────
+        self.cost_hook  = CostHook()
+        self.audit_hook = AuditHook()
+
+        # ── Permissões ────────────────────────────────────────
+        self.permissions = Permissions(permission_overrides)
+
+        # ── Tools ─────────────────────────────────────────────
+        self.tools = ToolRegistry()
+        self._register_default_tools()
+
+        # ── QueryEngine ───────────────────────────────────────
+        key = api_key or config("GROQ_API_KEY", default="")
+        self.engine = QueryEngine(
+            api_key=key,
+            model=model,
+            max_tokens=max_tokens,
+            cost_hook=self.cost_hook,
+            audit_hook=self.audit_hook,
         )
-        self.cost_tracker = CostTracker()
-        self.session_store = SessionStore(user_id=user_id)
 
-        # Registra hooks na cadeia global
-        self._register_hooks()
+    # ── API pública ──────────────────────────────────────────
 
-    # ─── Hooks ────────────────────────────────────────────────────────────────
-
-    def _register_hooks(self) -> None:
-        """Registra os 3 hooks padrão na HookChain global."""
-        session = self.engine.session
-
-        hook_chain.register(PermissionHook(user_plan=self.user_plan))
-        hook_chain.register(CostHook(session=session))
-        hook_chain.register(AuditHook(
-            session_id=session.session_id,
-            user_id=self.user_id,
-        ))
-
-    # ─── Processamento de mensagens ───────────────────────────────────────────
-
-    def process(self, user_input: str) -> str:
-        """Processa uma mensagem do usuário. Retorna a resposta final."""
-        return self.engine.run(user_input)
-
-    def process_stream(self, user_input: str) -> Generator[str, None, None]:
-        """Versão streaming — yield de chunks para o Streamlit."""
-        yield from self.engine.run_stream(user_input)
-
-    # ─── Documentos ───────────────────────────────────────────────────────────
-
-    def load_document(self, filepath: str, filename: str) -> str:
-        """Carrega um documento na sessão ativa."""
-        return self.engine.load_document(filepath=filepath, filename=filename)
-
-    @property
-    def active_document(self) -> Optional[str]:
-        return self.engine.session.active_document
-
-    # ─── Métricas ─────────────────────────────────────────────────────────────
-
-    def get_metrics(self) -> dict:
-        """Retorna métricas da sessão para exibição na sidebar."""
-        session = self.engine.session
-        return {
-            "messages": len(session.messages),
-            "tool_calls": session.tool_calls_count,
-            "tokens": session.total_tokens,
-            "cost_usd": self.cost_tracker.total_cost_usd,
-            "cost_brl": self.cost_tracker.total_cost_brl,
-            "document": session.active_document or "Nenhum",
-        }
-
-    # ─── Finalização da sessão ────────────────────────────────────────────────
-
-    def close(self) -> None:
+    def run(
+        self,
+        user_input: str,
+        file_context: str = "",
+        stream_callback=None,
+    ) -> str:
         """
-        Finaliza a sessão:
-          - Salva histórico no SessionStore
-          - Registra sessão na memória do usuário
-          - Flush do log de auditoria
+        Executa um turno completo do loop agêntico.
+
+        Args:
+            user_input      → mensagem do usuário
+            file_context    → conteúdo dos arquivos carregados
+            stream_callback → callable(text: str) para streaming na UI
+
+        Returns:
+            Resposta final do agente.
         """
-        session = self.engine.session
-        memory = self.engine.memory
+        system_prompt = self._build_system_prompt(file_context)
+        history       = self._get_history()
 
-        # Salva sessão
-        self.session_store.save(session)
+        response = self.engine.query(
+            system_prompt=system_prompt,
+            user_prompt=user_input,
+            history=history,
+            stream_callback=stream_callback,
+        )
 
-        # Registra na memória do usuário
-        memory.record_session(
-            session_id=session.session_id,
-            messages_count=len(session.messages),
-            tokens_used=session.total_tokens,
-            tools_used=session.tool_calls_count,
-            document=session.active_document,
+        self._save_turn(user_input, response)
+        return response
+
+    def get_cost_summary(self) -> dict:
+        return self.cost_hook.summary()
+
+    def get_audit_log(self) -> list[dict]:
+        return self.audit_hook.get_log()
+
+    def reset_session(self) -> None:
+        """Limpa histórico, custo e log de auditoria."""
+        st.session_state["messages"]             = []
+        st.session_state["arquivos_processados"] = []
+        st.session_state["full_content"]         = ""
+        self.cost_hook.reset()
+        self.audit_hook.clear()
+
+    # ── internals ────────────────────────────────────────────
+
+    def _register_default_tools(self) -> None:
+        file_tool   = FileReadTool()
+        search_tool = WebSearchTool()
+        export_tool = ExportTool()
+
+        self.tools.register(
+            name=file_tool.name,
+            description=file_tool.description,
+            func=file_tool,
+            permission=file_tool.permission,
+        )
+        self.tools.register(
+            name=search_tool.name,
+            description=search_tool.description,
+            func=search_tool,
+            permission=search_tool.permission,
+        )
+        self.tools.register(
+            name=export_tool.name,
+            description=export_tool.description,
+            func=export_tool,
+            permission=export_tool.permission,
+        )
+
+    def _build_system_prompt(self, file_context: str) -> str:
+        nome   = st.session_state.get("primeiro_nome", "Usuário")
+        tools  = self.tools.describe_for_prompt()
+        ctx    = truncate(file_context, MAX_CONTEXT_CHARS)
+
+        return f"""Você é o {APP_NAME}, doutor e especialista em análise de dados, \
+desenvolvido pela equipe Oráculo IA Tec.
+Responda com objetividade, precisão e clareza em português brasileiro.
+Se a informação não estiver disponível no contexto, diga isso claramente.
+Usuário atual: {nome}
+
+{tools}
+
+## Contexto dos arquivos carregados:
+{ctx if ctx else 'Nenhum arquivo carregado nesta sessão.'}
+"""
+
+    def _get_history(self) -> list[dict]:
+        return [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.get("messages", [])
+            if m["role"] in ("user", "assistant")
+        ]
+
+    def _save_turn(self, user_input: str, response: str) -> None:
+        if "messages" not in st.session_state:
+            st.session_state["messages"] = []
+        st.session_state["messages"].append(
+            {"role": "user",      "content": user_input}
+        )
+        st.session_state["messages"].append(
+            {"role": "assistant", "content": response}
         )

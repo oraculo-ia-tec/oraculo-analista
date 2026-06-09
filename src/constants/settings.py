@@ -1,63 +1,36 @@
-"""
-Constantes globais da Arquitetura Claude Code — Oráculo Analista
-Todas as configurações fixas do sistema ficam aqui.
-"""
-from pathlib import Path
+# ============================================================
+# src/constants/settings.py
+# Constantes globais do Oráculo Analista (estilo Claude Code)
+# ============================================================
+from decouple import config
 
-# ─── Identidade ────────────────────────────────────────────────────────────────
-APP_NAME = "Oráculo Analista"
-APP_VERSION = "2.0.0"  # versão pós-implementação da arquitetura Claude Code
+# ── Modelos ──────────────────────────────────────────────────
+DEFAULT_MODEL        = config("GROQ_MODEL", default="llama-3.3-70b-versatile")
+FALLBACK_MODEL       = "llama-3.1-8b-instant"
 
-# ─── Limites de tokens ─────────────────────────────────────────────────────────
-MAX_TOKENS_PER_SESSION = 128_000    # janela de contexto máxima por sessão
-MAX_TOKENS_PER_MESSAGE = 8_192      # máximo de tokens em uma única resposta
-MAX_TOOL_CALLS_PER_SESSION = 50     # evita loops infinitos de tools
+# ── Limites de tokens por plano ──────────────────────────────
+MAX_TOKENS_FREE_PLAN  = 800
+MAX_TOKENS_PRO_PLAN   = 2400
+MAX_TOKENS_ULTRA_PLAN = 4096
 
-# ─── Limites de documentos ─────────────────────────────────────────────────────
-MAX_DOCUMENT_SIZE_MB = 25           # tamanho máximo de upload
-SUPPORTED_DOCUMENT_TYPES = [
-    ".pdf",
-    ".docx",
-    ".xlsx",
-    ".xls",
-    ".csv",
-    ".txt",
-    ".md",
-]
+# ── Janela de contexto ────────────────────────────────────────
+MAX_HISTORY_MESSAGES  = 10     # mensagens passadas enviadas ao LLM
+MAX_CONTEXT_CHARS     = 14000  # chars máximos do contexto de arquivos
 
-# ─── Modelos LLM (Groq) ────────────────────────────────────────────────────────
-DEFAULT_MODEL = "llama-3.3-70b-versatile"   # modelo principal
-FALLBACK_MODEL = "llama-3.1-8b-instant"     # fallback quando quota estiver apertada
+# ── Custo estimado (USD por 1M tokens) ───────────────────────
+COST_PER_1M_INPUT_TOKENS   = 0.59   # llama-3.3-70b groq pricing
+COST_PER_1M_OUTPUT_TOKENS  = 0.79
 
-# ─── Timeouts ──────────────────────────────────────────────────────────────────
-TOOL_TIMEOUT_SECONDS = 30           # timeout máximo para execução de uma tool
-
-# ─── Caminhos ──────────────────────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).parent.parent.parent
-MEMORY_DIR = ROOT_DIR / "user_profiles"     # onde ficam os MEMORY.md dos usuários
-DB_PATH = ROOT_DIR / "oraculo_analista.db"  # banco SQLite
-
-# ─── Planos e limites por plano ────────────────────────────────────────────────
-PLANS = {
-    "free": {
-        "label": "Gratuito",
-        "max_sessions_per_day": 3,
-        "max_tokens_per_session": 32_000,
-        "max_documents_per_session": 1,
-        "tools_allowed": ["tool_pdf", "tool_excel", "tool_txt"],
-    },
-    "pro": {
-        "label": "Pro",
-        "max_sessions_per_day": 50,
-        "max_tokens_per_session": 128_000,
-        "max_documents_per_session": 5,
-        "tools_allowed": ["tool_pdf", "tool_excel", "tool_txt", "tool_email", "tool_asaas"],
-    },
-    "enterprise": {
-        "label": "Enterprise",
-        "max_sessions_per_day": -1,  # ilimitado
-        "max_tokens_per_session": 128_000,
-        "max_documents_per_session": -1,
-        "tools_allowed": "all",
-    },
+# ── Permissões padrão ────────────────────────────────────────
+DEFAULT_PERMISSIONS = {
+    "file_read":    "allow",
+    "file_write":   "ask",
+    "web_search":   "allow",
+    "code_exec":    "deny",
+    "send_email":   "ask",
+    "billing":      "ask",
 }
+
+# ── Versão ───────────────────────────────────────────────────
+APP_VERSION = "2.0.0"
+APP_NAME    = "Oráculo Analista"

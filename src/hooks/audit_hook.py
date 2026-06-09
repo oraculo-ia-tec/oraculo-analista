@@ -1,77 +1,43 @@
-"""
-Audit Hook — registra todas as execuções de tools em log de auditoria.
-Gera trilha completa de ações do agente por sessão.
-"""
-import json
-import os
-from datetime import datetime
-from typing import Optional
-from src.hooks.base import BaseHook
-from src.types.base import ToolCall, ToolResult
+# ============================================================
+# src/hooks/audit_hook.py
+# Hook de auditoria — registra eventos de tools e chamadas LLM
+# ============================================================
+from ..utils.helpers import now_iso, generate_id
 
 
-AUDIT_LOG_DIR = "logs/audit"
-os.makedirs(AUDIT_LOG_DIR, exist_ok=True)
-
-
-class AuditHook(BaseHook):
+class AuditHook:
     """
-    Grava um log JSON por sessão com cada tool call:
-      - timestamp
-      - tool_name
-      - parâmetros (sanitizados)
-      - sucesso/erro
-      - duração em ms
+    Mantém um log de auditoria em memória para a sessão.
+    Cada evento registra: id, tipo, timestamp, detalhes.
     """
 
-    def __init__(self, session_id: str, user_id: str):
-        self.session_id = session_id
-        self.user_id = user_id
-        self._start_times: dict = {}
-        self._log_file = os.path.join(
-            AUDIT_LOG_DIR, f"{session_id}.jsonl"
-        )
+    def __init__(self):
+        self._log: list[dict] = []
 
-    def before_tool(self, tool_call: ToolCall) -> Optional[ToolResult]:
-        """Registra timestamp de início."""
-        self._start_times[tool_call.tool_id] = datetime.utcnow().timestamp()
-        return None  # Não bloqueia
-
-    def after_tool(self, tool_call: ToolCall, result: ToolResult) -> ToolResult:
-        """Grava entrada no log JSONL."""
-        start = self._start_times.pop(tool_call.tool_id, None)
-        duration_ms = None
-        if start:
-            duration_ms = round((datetime.utcnow().timestamp() - start) * 1000)
-
-        # Sanitiza parâmetros (remove conteúdo de arquivos, mantém metadados)
-        safe_params = self._sanitize_params(tool_call.parameters)
-
+    def record(self, event_type: str, details: dict) -> str:
         entry = {
-            "ts": datetime.utcnow().isoformat(),
-            "session_id": self.session_id,
-            "user_id": self.user_id,
-            "tool": tool_call.tool_name,
-            "params": safe_params,
-            "success": result.success,
-            "error": result.error,
-            "duration_ms": duration_ms,
+            "id":        generate_id("evt_"),
+            "type":      event_type,
+            "timestamp": now_iso(),
+            "details":   details,
         }
+        self._log.append(entry)
+        return entry["id"]
 
-        try:
-            with open(self._log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            pass  # Log não-crítico — não interrompe o fluxo
+    def on_tool_call(self, tool_name: str, params: dict) -> str:
+        return self.record("tool_call", {"tool": tool_name, "params": params})
 
-        return result
+    def on_tool_result(self, tool_name: str, result: str) -> str:
+        return self.record("tool_result", {"tool": tool_name, "result_preview": result[:200]})
 
-    def _sanitize_params(self, params: dict) -> dict:
-        """Remove campos com conteúdo longo (filepath mantido, content removido)."""
-        safe = {}
-        for k, v in params.items():
-            if isinstance(v, str) and len(v) > 200:
-                safe[k] = f"[{len(v)} chars]"
-            else:
-                safe[k] = v
-        return safe
+    def on_llm_call(self, model: str, prompt_len: int) -> str:
+        return self.record("llm_call", {"model": model, "prompt_chars": prompt_len})
+
+    def on_error(self, source: str, error: str) -> str:
+        return self.record("error", {"source": source, "error": error})
+
+    def get_log(self) -> list[dict]:
+        return list(self._log)
+
+    def clear(self) -> None:
+        self._log.clear()
