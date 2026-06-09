@@ -1,8 +1,8 @@
 # === Oráculo Analista — requirements.txt ===
-# bump: 2026-06-09 — força rebuild do cache Streamlit Cloud
+# bump: 2026-06-09-v2
 
-# Auth
-bcrypt==4.1.3
+# Auth — wheel pré-compilada, evita falha de compilação no Streamlit Cloud
+bcrypt==4.0.1
 
 # Config
 python-decouple==3.8
