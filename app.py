@@ -385,28 +385,9 @@ def interface():
 
                 codigo = st.text_input(
                     "Código de Verificação", key="codigo_cadastro")
+                # FIX: usa verificar_codigo() que seta logged_in e redireciona corretamente
                 if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
-
-                        if not user:
-                            st.error("Usuário não encontrado.")
-                        elif codigo != user.verification_code:
-                            st.error("Código de verificação inválido.")
-                        else:
-                            user.is_verified = True
-                            user.verification_code = None
-                            session.commit()
-                            st.success("Conta verificada com sucesso!")
-                            st.session_state.temp_email = None
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao confirmar código: {e}")
-                    finally:
-                        session.close()
+                    verificar_codigo(st.session_state.temp_email, codigo)
 
     if "verificar_pagamento" not in st.session_state:
         st.session_state.verificar_pagamento = False
