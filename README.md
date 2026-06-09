@@ -1,241 +1,131 @@
+
 # 🔮 Oráculo Analista
 
-> Agente de IA para análise inteligente de documentos — PDF, Excel, CSV e muito mais.
-> Arquitetura inspirada no Claude Code: loop agêntico, sistema de tools, memória persistente e hooks de segurança.
+<div align="center">
+  <img src="https://img.shields.io/badge/AI-Powered-blue?style=for-the-badge&logo=artificial-intelligence" alt="AI Powered">
+  <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/Version-1.0.1-informational?style=for-the-badge" alt="Version">
+</div>
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-red.svg)](https://streamlit.io)
-[![Groq](https://img.shields.io/badge/LLM-Groq%20%2F%20llama--3.3--70b-green.svg)](https://groq.com)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
-
----
-
-## ✨ O que é
-
-O **Oráculo Analista** é um assistente de IA que roda no navegador (via Streamlit) e permite que qualquer usuário — sem saber programar — faça perguntas em linguagem natural sobre documentos complexos.
-
-```
-Usuário: "Qual foi o produto mais vendido em março?"
-Oráculo: [lê o Excel] → [calcula] → "O produto A liderou com 3.200 unidades, +18% vs fevereiro."
-```
+<div align="center">
+  <h3>🚀 Transforme dados complexos em insights valiosos</h3>
+  <p><em>Ferramenta inovadora de análise de documentos com Inteligência Artificial</em></p>
+</div>
 
 ---
 
-## 🏗️ Arquitetura
+## 📋 Sobre o Oráculo Analista
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        app.py (Streamlit)                    │
-│          Login → Upload → Chat com streaming                 │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-                     Runtime (1 por sessão)
-                            │
-          ┌─────────────────┼──────────────────┐
-          │                 │                  │
-    QueryEngine        HookChain          CostTracker
-    (loop agêntico)   (permissão,         (tokens + R$)
-          │            custo, audit)
-          │
-    ┌─────┴──────┐
-    │  Tool Pool │  ← 8+ ferramentas
-    └─────┬──────┘
-          │
-    ┌─────┴───────────────────────────────────┐
-    │  tool_pdf  tool_excel  tool_calculator   │
-    │  tool_csv  tool_chart  tool_web_search   │
-    │  tool_export_pdf  tool_memory_write      │
-    └─────────────────────────────────────────┘
-          │
-    MemoryManager  ←  MEMORY.md por usuário
-    SessionStore   ←  histórico de sessões
-```
+O **Oráculo Analista** é uma ferramenta revolucionária desenvolvida pela **Oráculos IA** que transforma a maneira como você lida com dados e informações complexas. Com capacidade de fornecer respostas rápidas e precisas, é a solução ideal para empresários que buscam agilidade na tomada de decisões estratégicas.
+
+### 🎯 Principais Funcionalidades
+
+- 📄 **Análise de Documentos Extensos**: Processe documentos de múltiplas páginas
+- 🤖 **Chat Inteligente**: Interface intuitiva para interação direta
+- ⚡ **Respostas Rápidas**: Obtenha insights valiosos em segundos
+- 🔒 **Segurança Garantida**: Sistema de autenticação robusto
+- 📊 **Análise de Dados**: Transforme informações em estratégias vencedoras
 
 ---
 
-## 🚀 Instalação rápida
+## 🚀 Como Começar
 
-### 1. Clone o repositório
+### 1️⃣ Cadastro
+- Acesse a plataforma do Oráculo Analista
+- Preencha o formulário de registro com suas informações
+- Crie sua conta de forma segura
 
-```bash
-git clone https://github.com/oraculo-ia-tec/oraculo-analista.git
-cd oraculo-analista
-```
+### 2️⃣ Verificação por E-mail
+- Verifique sua caixa de entrada
+- Localize o e-mail do Oráculo Analista
+- Copie o código de verificação fornecido
 
-### 2. Crie o ambiente virtual
+### 3️⃣ Autenticação
+- Retorne ao sistema
+- Insira o código de verificação na área designada
+- Confirme sua identidade para prosseguir
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
-```
-
-### 3. Instale as dependências
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure as variáveis de ambiente
-
-```bash
-cp .env.example .env
-# Edite o .env e adicione sua GROQ_API_KEY
-```
-
-> Obtenha sua chave gratuita em: https://console.groq.com
-
-### 5. Inicie o app
-
-```bash
-streamlit run app.py
-```
-
-Acesse: `http://localhost:8501`
+### 4️⃣ Login no Sistema
+- Use suas credenciais para acessar a plataforma
+- Todas as funcionalidades estarão disponíveis
 
 ---
 
-## 🔑 Variáveis de Ambiente
+## 💡 Como Usar
 
-| Variável | Obrigatória | Descrição |
-|---|---|---|
-| `GROQ_API_KEY` | ✅ Sim | Chave da API Groq (LLM) |
-| `SERPAPI_KEY` | ⬜ Opcional | Habilita `tool_web_search` |
-| `SUPABASE_URL` | ⬜ Opcional | Auth em produção |
-| `SUPABASE_ANON_KEY` | ⬜ Opcional | Auth em produção |
+### 📤 Upload de Arquivo
+1. Clique no botão **"CARREGAR"**
+2. Selecione o documento desejado
+3. Aguarde o processamento (suporta documentos de várias páginas)
 
----
+### 📖 Processamento
+- O sistema fará a leitura automática do documento
+- Processo rápido e eficiente
+- Insights valiosos gerados automaticamente
 
-## 🧰 Tools disponíveis
-
-| Tool | Plano | Descrição |
-|---|---|---|
-| `tool_calculator` | 🆓 Free | Calculadora segura (sem `eval` direto) |
-| `tool_pdf` | 🆓 Free | Leitura e extração de PDF |
-| `tool_csv` | 🆓 Free | Análise de arquivos CSV |
-| `tool_excel` | ⭐ Pro | Leitura de planilhas Excel |
-| `tool_chart_generator` | ⭐ Pro | Geração de gráficos Plotly |
-| `tool_web_search` | ⭐ Pro | Busca na web via SerpAPI |
-| `tool_export_pdf` | ⭐ Pro | Exporta respostas em PDF |
-| `tool_memory_write` | 🆓 Free | Salva informações na memória do usuário |
+### 💬 Interação via Chat
+- Faça perguntas específicas sobre o documento
+- Receba respostas diretas e precisas
+- Interface intuitiva e amigável
 
 ---
 
-## 🔐 Sistema de Permissões
+## 🎥 Demonstração
 
-Configurado em `settings.json`:
+> **Vídeo Tutorial**: Veja como é fácil se cadastrar, verificar sua conta e começar a analisar documentos extensos em poucos cliques.
 
-```json
-{
-  "permissions": {
-    "file_read":  "allow",
-    "file_write": "ask",
-    "web_search": "allow",
-    "export":     "allow",
-    "delete":     "deny"
-  }
-}
-```
-
-Valores possíveis: `allow` | `ask` | `deny`
+*[Link para o vídeo de demonstração será adicionado em breve]*
 
 ---
 
-## 🧪 Rodando os testes
+## 🏢 Sobre a Oráculos IA
 
-```bash
-# Todos os testes
-pytest
+A **Oráculos IA** é uma empresa inovadora que combina inteligência artificial com estratégias de mercado para otimizar a gestão financeira e operacional de negócios. Nossa missão é ajudar empresas a alcançarem seus objetivos, promovendo um futuro próspero e sustentável através de soluções tecnológicas inteligentes.
 
-# Com cobertura
-pytest --cov=src --cov-report=term-missing
+### 🔮 Outros Oráculos Disponíveis
 
-# Módulo específico
-pytest tests/test_tools.py -v
-pytest tests/test_memory.py -v
-pytest tests/test_hooks.py -v
-```
+- **📖 Oráculo Bíblia**: Orientação espiritual e reflexões
+- **🏆 Oráculo Coach**: Desenvolvimento pessoal e profissional  
+- **🚚 Oráculo Delivery**: Otimização de logística e entregas
+- **📊 Oráculo Analista**: Análise de dados avançada *(você está aqui)*
 
 ---
 
-## 📁 Estrutura do projeto
+## 🛠️ Tecnologias
 
-```
-oraculo-analista/
-├── app.py                    # Interface Streamlit (entrada principal)
-├── settings.json             # Permissões do sistema
-├── requirements.txt          # Dependências Python
-├── pytest.ini               # Configuração de testes
-├── .env.example             # Template de variáveis de ambiente
-│
-├── src/
-│   ├── runtime.py           # Orquestrador de sessão
-│   ├── query_engine.py      # Loop agêntico (pensa → age → responde)
-│   ├── query_engine_factory.py
-│   ├── cost_tracker.py      # Monitora custo de tokens
-│   ├── permissions.py       # Lê settings.json
-│   │
-│   ├── tools/               # 8+ ferramentas
-│   │   ├── tool_calculator.py
-│   │   ├── tool_pdf.py
-│   │   ├── tool_excel.py
-│   │   ├── tool_csv.py
-│   │   ├── tool_chart_generator.py
-│   │   ├── tool_web_search.py
-│   │   ├── tool_export_pdf.py
-│   │   └── tool_memory_write.py
-│   │
-│   ├── hooks/               # Middleware de segurança
-│   │   ├── base.py          # BaseHook + HookChain
-│   │   ├── permission_hook.py
-│   │   ├── cost_hook.py
-│   │   └── audit_hook.py
-│   │
-│   ├── memory/              # Memória persistente
-│   │   ├── memory_manager.py
-│   │   └── session_store.py
-│   │
-│   ├── types/               # Tipos e dataclasses
-│   │   └── base.py
-│   │
-│   └── utils/
-│       └── helpers.py
-│
-└── tests/
-    ├── conftest.py
-    ├── test_tools.py
-    ├── test_memory.py
-    ├── test_hooks.py
-    └── test_cost_tracker.py
-```
+<div align="center">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/AI-Machine%20Learning-orange?style=for-the-badge&logo=tensorflow" alt="AI/ML">
+  <img src="https://img.shields.io/badge/NLP-Natural%20Language%20Processing-green?style=for-the-badge" alt="NLP">
+  <img src="https://img.shields.io/badge/Cloud-Computing-blue?style=for-the-badge&logo=icloud" alt="Cloud">
+</div>
 
 ---
 
-## ☁️ Deploy no Streamlit Cloud
+## 📞 Suporte e Contato
 
-1. Faça fork ou push deste repositório para seu GitHub
-2. Acesse [share.streamlit.io](https://share.streamlit.io)
-3. Conecte o repositório e selecione `app.py` como entry point
-4. Em **Secrets**, adicione:
-   ```toml
-   GROQ_API_KEY = "sua_chave_aqui"
-   ```
-5. Clique em **Deploy** ✅
+- 🌐 **Website**: [www.oraculosia.com](https://www.oraculosia.com)
+- 📧 **E-mail**: contato@oraculosia.com
+- 💬 **Suporte**: Disponível diretamente na plataforma
 
 ---
 
-## 🗺️ Roadmap
+## 📜 Licença
 
-- [ ] Autenticação com Supabase Auth
-- [ ] Planos com Stripe
-- [ ] Suporte a imagens (visão computacional)
-- [ ] Tool para banco de dados SQL
-- [ ] Modo multi-documento (comparar arquivos)
-- [ ] API REST pública
-- [ ] Exportação para Google Sheets
+Este projeto está licenciado sob os termos da **Oráculos IA**. Todos os direitos reservados.
 
 ---
 
-## 📄 Licença
-
-MIT © 2026 Oráculo IA Tec
+<div align="center">
+  <h3>🚀 Pronto para transformar seus dados em insights valiosos?</h3>
+  <p><strong>Experimente o Oráculo Analista hoje mesmo!</strong></p>
+  
+  ---
+  
+  <p>
+    <em>Desenvolvido com ❤️ pela equipe</em> <strong>Oráculos IA</strong>
+  </p>
+  <p>
+    <em>© 2024 Oráculos IA. Transformando o futuro através da inteligência artificial.</em>
+  </p>
+</div>
