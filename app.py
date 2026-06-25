@@ -1,8 +1,6 @@
 import os
 import random
-import secrets
 import string
-from datetime import datetime, timedelta
 
 import bcrypt
 import requests
@@ -23,7 +21,6 @@ config = AutoConfig()
 DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo.db")
 WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
 VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
-APP_BASE_URL = config("APP_BASE_URL", default="https://oraculo-analista.streamlit.app")
 
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
@@ -31,9 +28,6 @@ Base = declarative_base()
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
-
-# Expiração do token de reset: 60 minutos
-RESET_TOKEN_EXPIRY_MINUTES = 60
 
 
 # =========================
@@ -120,9 +114,6 @@ class UserAnalise(Base):
     verification_code = Column(String(6), nullable=True)
     is_verified = Column(Boolean, default=False)
     cargo_id = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
-    # Campos para recuperação de senha
-    reset_token = Column(String(128), nullable=True)
-    reset_token_expiry = Column(String(50), nullable=True)
 
 
 Base.metadata.create_all(engine)
@@ -160,229 +151,6 @@ def send_to_make_webhook(data: dict) -> bool:
 
 
 # =========================
-# Recuperação de senha
-# =========================
-def solicitar_recuperacao_senha(email: str) -> bool:
-    """Gera token seguro, persiste no banco e envia e-mail com link."""
-    session = Session()
-    try:
-        user = session.query(UserAnalise).filter_by(email=email).first()
-        # Resposta genérica por segurança (não revela se e-mail existe)
-        if not user:
-            return True
-
-        token = secrets.token_urlsafe(48)
-        expiry = (datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)).isoformat()
-
-        user.reset_token = token
-        user.reset_token_expiry = expiry
-        session.commit()
-
-        link = f"{APP_BASE_URL}?reset_token={token}"
-
-        notificador = Notificador()
-        notificador.enviar_recuperacao_senha(
-            nome=user.name,
-            email=user.email,
-            link=link,
-        )
-        return True
-
-    except Exception as e:
-        session.rollback()
-        st.error(f"Erro ao solicitar recuperação de senha: {e}")
-        return False
-    finally:
-        session.close()
-
-
-def validar_reset_token(token: str):
-    """Retorna o usuário se o token for válido e não expirado, senão None."""
-    if not token:
-        return None
-    session = Session()
-    try:
-        user = session.query(UserAnalise).filter_by(reset_token=token).first()
-        if not user or not user.reset_token_expiry:
-            return None
-        expiry = datetime.fromisoformat(user.reset_token_expiry)
-        if datetime.utcnow() > expiry:
-            return None
-        return user
-    finally:
-        session.close()
-
-
-def redefinir_senha_e_verificar(token: str, nova_senha: str) -> bool:
-    """
-    Redefine a senha do usuário e envia código de verificação por e-mail.
-    O usuário só acessa o sistema após confirmar o código.
-    """
-    session = Session()
-    try:
-        user = session.query(UserAnalise).filter_by(reset_token=token).first()
-        if not user or not user.reset_token_expiry:
-            st.error("Token inválido.")
-            return False
-
-        expiry = datetime.fromisoformat(user.reset_token_expiry)
-        if datetime.utcnow() > expiry:
-            st.error("Este link expirou. Solicite um novo.")
-            return False
-
-        # Atualiza a senha
-        senha_hash = bcrypt.hashpw(nova_senha.encode(), bcrypt.gensalt()).decode()
-        user.password = senha_hash
-
-        # Gera código de verificação para confirmar acesso
-        codigo = gerar_codigo_verificacao()
-        user.verification_code = codigo
-        user.is_verified = False
-
-        # Invalida o token de reset
-        user.reset_token = None
-        user.reset_token_expiry = None
-
-        session.commit()
-
-        notificador = Notificador()
-        # Notifica que a senha foi alterada
-        notificador.enviar_senha_alterada(nome=user.name, email=user.email)
-        # Envia código de verificação para acessar o sistema
-        notificador.enviar_verificacao(
-            nome=user.name,
-            email=user.email,
-            codigo=codigo,
-        )
-
-        # Prepara session_state para etapa de verificação
-        st.session_state.temp_email = user.email
-        st.session_state.verificacao_pos_login = True
-        st.session_state.reset_token = None
-        st.session_state.tela = "verificacao"
-        return True
-
-    except Exception as e:
-        session.rollback()
-        st.error(f"Erro ao redefinir senha: {e}")
-        return False
-    finally:
-        session.close()
-
-
-# =========================
-# Tela: Esqueci minha senha
-# =========================
-def tela_esqueci_senha():
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🔑 Recuperar Senha")
-    st.sidebar.caption("Informe seu e-mail cadastrado para receber o link de redefinição.")
-
-    email_reset = st.sidebar.text_input("E-mail cadastrado", key="email_reset_input")
-
-    col_voltar, col_enviar = st.sidebar.columns(2)
-    with col_voltar:
-        if st.button("← Voltar", key="btn_voltar_reset", use_container_width=True):
-            st.session_state.tela = "login"
-            st.rerun()
-    with col_enviar:
-        if st.button("Enviar link", key="btn_enviar_reset", type="primary", use_container_width=True):
-            if not email_reset or "@" not in email_reset:
-                st.sidebar.error("Informe um e-mail válido.")
-            else:
-                with st.sidebar:
-                    with st.spinner("Enviando..."):
-                        solicitar_recuperacao_senha(email_reset)
-                st.sidebar.success(
-                    "✅ Se este e-mail estiver cadastrado, você receberá o link em instantes. "
-                    "Verifique também a pasta de spam."
-                )
-
-
-# =========================
-# Tela: Criar nova senha (via token na URL)
-# =========================
-def tela_nova_senha(token: str):
-    st.markdown(
-        """
-        <style>
-        .reset-container {
-            max-width: 480px;
-            margin: 60px auto;
-            background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
-            border: 1px solid #3a1f6e;
-            border-radius: 16px;
-            padding: 48px 40px;
-            text-align: center;
-        }
-        .reset-title {
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: #ffffff;
-            margin-bottom: 8px;
-        }
-        .reset-sub {
-            font-size: 1rem;
-            color: #b0aac8;
-            margin-bottom: 32px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    user = validar_reset_token(token)
-
-    if not user:
-        st.error("❌ Link inválido ou expirado. Solicite um novo na tela de login.")
-        if st.button("← Voltar ao login"):
-            st.query_params.clear()
-            st.rerun()
-        return
-
-    st.markdown(
-        f"""
-        <div class='reset-container'>
-            <div class='reset-title'>🔐 Criar Nova Senha</div>
-            <div class='reset-sub'>Olá, <strong style='color:#a855f7'>{user.name.split()[0]}</strong>!
-            Defina sua nova senha de acesso ao Oráculo Analista.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.form("form_nova_senha", clear_on_submit=False):
-        nova_senha = st.text_input(
-            "Nova senha",
-            type="password",
-            placeholder="Mínimo 8 caracteres",
-            help="Use letras maiúsculas, minúsculas, números e símbolos.",
-        )
-        confirmar_senha = st.text_input(
-            "Confirmar nova senha",
-            type="password",
-            placeholder="Repita a senha",
-        )
-        salvar = st.form_submit_button("💾 Salvar nova senha", type="primary", use_container_width=True)
-
-        if salvar:
-            if not nova_senha or len(nova_senha) < 8:
-                st.error("A senha deve ter pelo menos 8 caracteres.")
-            elif nova_senha != confirmar_senha:
-                st.error("As senhas não coincidem.")
-            else:
-                with st.spinner("Salvando..."):
-                    ok = redefinir_senha_e_verificar(token, nova_senha)
-                if ok:
-                    st.success(
-                        "✅ Senha salva! Enviamos um código de verificação para o seu e-mail. "
-                        "Insira-o na barra lateral para acessar o sistema."
-                    )
-                    st.query_params.clear()
-                    st.rerun()
-
-
-# =========================
 # Cadastro
 # =========================
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
@@ -412,15 +180,20 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
         session.commit()
 
         notificador = Notificador()
-        notificador.enviar_boas_vindas(
-            nome=name,
-            email=email,
-            whatsapp=whatsapp,
-        )
-        notificador.enviar_verificacao(nome=name, email=email, codigo=codigo)
+
+        assunto = "Código de Verificação - Oráculo Analista"
+        mensagem = f"""
+        <h3>Olá, {name}</h3>
+        <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
+        <p>Use este código para ativar sua conta.</p>
+        """
+
+        notificador.enviar_email(email, assunto, mensagem)
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
+        # Sinaliza que o cadastro foi submetido para ocultar o formulário
+        st.session_state.cadastro_realizado = True
         st.success("Cadastro realizado. Verifique o código enviado por e-mail.")
         return True
 
@@ -437,6 +210,7 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 # Verificação
 # =========================
 def verificar_codigo(email, codigo):
+    """Verificação chamada pelo fluxo de LOGIN (conta não verificada)."""
     session = Session()
     try:
         user = session.query(UserAnalise).filter_by(email=email).first()
@@ -454,7 +228,7 @@ def verificar_codigo(email, codigo):
                 st.session_state.logged_in = True
                 st.session_state.codigo_confirmado = True
                 st.session_state.temp_email = None
-                st.session_state.tela = "login"
+                st.session_state.verificacao_pos_login = False
                 st.rerun()
             finally:
                 session2.close()
@@ -462,6 +236,51 @@ def verificar_codigo(email, codigo):
             return True
 
         st.error("Código incorreto.")
+        return False
+    finally:
+        session.close()
+
+
+def verificar_codigo_cadastro(email, codigo):
+    """Verificação chamada pelo fluxo de CADASTRO — faz login automático e redireciona para o chat."""
+    session = Session()
+    try:
+        user = session.query(UserAnalise).filter_by(email=email).first()
+
+        if not user:
+            st.error("Usuário não encontrado.")
+            return False
+
+        if codigo != user.verification_code:
+            st.error("Código de verificação inválido.")
+            return False
+
+        # Marca conta como verificada
+        user.is_verified = True
+        user.verification_code = None
+        session.commit()
+
+        # Busca objeto atualizado em nova sessão para evitar DetachedInstanceError
+        session2 = Session()
+        try:
+            user_fresh = session2.query(UserAnalise).filter_by(email=email).first()
+            # Login automático e limpeza de estado
+            st.session_state.user = user_fresh
+            st.session_state.logged_in = True
+            st.session_state.codigo_confirmado = True
+            st.session_state.temp_email = None
+            st.session_state.verificacao_pos_login = False
+            st.session_state.cadastro_realizado = False
+        finally:
+            session2.close()
+
+        st.success("✅ Conta verificada com sucesso! Redirecionando...")
+        st.rerun()
+        return True
+
+    except Exception as e:
+        session.rollback()
+        st.error(f"Erro ao confirmar código: {e}")
         return False
     finally:
         session.close()
@@ -501,160 +320,139 @@ def interface():
     if st.session_state.get("logged_in"):
         return
 
-    # Inicializa tela padrão
-    if "tela" not in st.session_state:
-        st.session_state.tela = "login"
-
     st.sidebar.title("Oráculo Analista")
 
-    # --- Tela: Esqueci minha senha ---
-    if st.session_state.tela == "esqueci_senha":
-        tela_esqueci_senha()
-        return
+    # Determina se há verificação de código pendente
+    aguardando_verificacao = (
+        "temp_email" in st.session_state
+        and st.session_state.get("temp_email")
+        and not st.session_state.get("codigo_confirmado")
+    )
 
-    opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
+    # Só exibe o radio e o formulário principal quando não há verificação pendente
+    if not aguardando_verificacao:
+        opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
 
-    if opcao == "Cadastrar":
-        nome = st.sidebar.text_input("Nome")
-        zap = st.sidebar.text_input("WhatsApp")
-        email = st.sidebar.text_input("Email")
-        senha = st.sidebar.text_input("Senha", type="password")
-        imagem = st.sidebar.file_uploader(
-            "Imagem de Perfil", type=["png", "jpg", "jpeg"])
+        if opcao == "Cadastrar":
+            # Exibe campos de cadastro apenas enquanto o formulário não foi submetido
+            if not st.session_state.get("cadastro_realizado"):
+                nome = st.sidebar.text_input("Nome", key="cad_nome")
+                zap = st.sidebar.text_input("WhatsApp", key="cad_zap")
+                email = st.sidebar.text_input("Email", key="cad_email")
+                senha = st.sidebar.text_input("Senha", type="password", key="cad_senha")
+                imagem = st.sidebar.file_uploader(
+                    "Imagem de Perfil", type=["png", "jpg", "jpeg"], key="cad_imagem")
 
-        if imagem:
-            st.sidebar.image(imagem, caption="Pré-visualização", width=150)
+                if imagem:
+                    st.sidebar.image(imagem, caption="Pré-visualização", width=150)
 
-        # Buscar cargos do banco
-        import sqlite3
-        cargos = []
-        try:
-            conn = sqlite3.connect('oraculo_analista.db')
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, nome FROM cargo")
-            cargos = cursor.fetchall()
-            conn.close()
-        except Exception as e:
-            st.sidebar.error(f"Erro ao buscar cargos: {e}")
+                # Buscar cargos do banco
+                import sqlite3
+                cargos = []
+                try:
+                    conn = sqlite3.connect('oraculo_analista.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, nome FROM cargo")
+                    cargos = cursor.fetchall()
+                    conn.close()
+                except Exception as e:
+                    st.sidebar.error(f"Erro ao buscar cargos: {e}")
 
-        cargo_opcoes = {nome: id_ for id_, nome in cargos}
-        default_index = 0
-        if cargos:
-            for idx, (id_, nome) in enumerate(cargos):
-                if nome.lower() == "cliente":
-                    default_index = idx
-                    break
-            cargo_nome = st.sidebar.selectbox("Cargo", list(
-                cargo_opcoes.keys()), index=default_index)
-            cargo_id = cargo_opcoes[cargo_nome]
-        else:
-            cargo_nome = None
-            cargo_id = None
+                cargo_opcoes = {c_nome: c_id for c_id, c_nome in cargos}
+                default_index = 0
+                if cargos:
+                    for idx, (c_id, c_nome) in enumerate(cargos):
+                        if c_nome.lower() == "cliente":
+                            default_index = idx
+                            break
+                    cargo_nome = st.sidebar.selectbox("Cargo", list(
+                        cargo_opcoes.keys()), index=default_index, key="cad_cargo")
+                    cargo_id = cargo_opcoes[cargo_nome]
+                else:
+                    cargo_nome = None
+                    cargo_id = None
 
-        if st.sidebar.button("Cadastrar"):
-            if not nome or not zap or not email or not senha:
-                st.sidebar.error("Preencha todos os campos obrigatórios.")
-            elif not cargo_id:
-                st.sidebar.error("Selecione um cargo.")
-            else:
-                cadastrar_usuario(
-                    name=nome,
-                    whatsapp=zap,
-                    email=email,
-                    password=senha,
-                    profile_image=imagem,
-                    cargo_id=cargo_id,
-                )
+                if st.sidebar.button("Cadastrar", key="btn_cadastrar"):
+                    if not nome or not zap or not email or not senha:
+                        st.sidebar.error("Preencha todos os campos obrigatórios.")
+                    elif not cargo_id:
+                        st.sidebar.error("Selecione um cargo.")
+                    else:
+                        sucesso = cadastrar_usuario(
+                            name=nome,
+                            whatsapp=zap,
+                            email=email,
+                            password=senha,
+                            profile_image=imagem,
+                            cargo_id=cargo_id,
+                        )
+                        if sucesso:
+                            st.rerun()
 
-    elif opcao == "Login":
-        email = st.sidebar.text_input("Email")
-        senha = st.sidebar.text_input("Senha", type="password")
+        elif opcao == "Login":
+            email = st.sidebar.text_input("Email", key="login_email")
+            senha = st.sidebar.text_input("Senha", type="password", key="login_senha")
 
-        # Botões lado a lado: Entrar | Esqueci minha senha
-        col_entrar, col_esqueci = st.sidebar.columns([1, 1])
-        with col_entrar:
-            entrar = st.button("▶ Entrar", key="btn_entrar", type="primary", use_container_width=True)
-        with col_esqueci:
-            esqueci = st.button("🔑 Esqueci a senha", key="btn_esqueci", use_container_width=True)
+            if st.sidebar.button("Entrar", key="btn_entrar"):
+                user = autenticar_usuario(email, senha)
+                if user:
+                    st.session_state.user = user
+                    st.session_state.logged_in = True
+                    st.rerun()
 
-        if entrar:
-            user = autenticar_usuario(email, senha)
-            if user:
-                st.session_state.user = user
-                st.session_state.logged_in = True
-                st.rerun()
-
-        if esqueci:
-            st.session_state.tela = "esqueci_senha"
-            st.rerun()
-
-    if "temp_email" in st.session_state and not st.session_state.get("codigo_confirmado"):
+    # Bloco de verificação de código — fluxo de CADASTRO
+    if aguardando_verificacao and not st.session_state.get("verificacao_pos_login"):
         with st.sidebar:
-            if st.session_state.get("verificacao_pos_login"):
-                st.warning(
-                    "Sua conta ainda não foi verificada. "
-                    "Por favor, insira o código de verificação enviado para seu e-mail."
-                )
-                codigo = st.text_input(
-                    "Código de Verificação", key="codigo_login")
-                if st.button("Confirmar Código", key="confirmar_codigo_login"):
-                    verificar_codigo(st.session_state.temp_email, codigo)
-            else:
-                st.info(
-                    f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
-                if st.button("Reenviar Código"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
+            st.info(
+                f"📧 Digite o código de verificação enviado para **{st.session_state.temp_email}**.")
 
-                        if not user:
-                            st.error("Usuário não encontrado para reenvio do código.")
-                        else:
-                            novo_codigo = gerar_codigo_verificacao()
-                            user.verification_code = novo_codigo
-                            session.commit()
+            if st.button("Reenviar Código", key="btn_reenviar"):
+                session = Session()
+                try:
+                    user = session.query(UserAnalise).filter_by(
+                        email=st.session_state.temp_email
+                    ).first()
 
-                            notificador = Notificador()
-                            notificador.enviar_verificacao(
-                                nome=user.name,
-                                email=user.email,
-                                codigo=novo_codigo,
-                            )
-                            st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+                    if not user:
+                        st.error("Usuário não encontrado para reenvio do código.")
+                    else:
+                        novo_codigo = gerar_codigo_verificacao()
+                        user.verification_code = novo_codigo
+                        session.commit()
 
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+                        notificador = Notificador()
+                        assunto = "Código de Verificação - Oráculo Analista"
+                        mensagem = f"""
+                        <h3>Olá, {user.name}</h3>
+                        <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
+                        <p>Use este código para ativar sua conta.</p>
+                        """
+                        notificador.enviar_email(user.email, assunto, mensagem)
+                        st.success("Código reenviado com sucesso! Verifique seu e-mail.")
 
-                    finally:
-                        session.close()
+                except Exception as e:
+                    session.rollback()
+                    st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+                finally:
+                    session.close()
 
-                codigo = st.text_input(
-                    "Código de Verificação", key="codigo_cadastro")
-                if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
+            codigo = st.text_input(
+                "Código de Verificação", key="codigo_cadastro")
+            if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
+                # Chama função que faz login automático e redireciona para o chat
+                verificar_codigo_cadastro(st.session_state.temp_email, codigo)
 
-                        if not user:
-                            st.error("Usuário não encontrado.")
-                        elif codigo != user.verification_code:
-                            st.error("Código de verificação inválido.")
-                        else:
-                            user.is_verified = True
-                            user.verification_code = None
-                            session.commit()
-                            st.success("Conta verificada com sucesso!")
-                            st.session_state.temp_email = None
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao confirmar código: {e}")
-                    finally:
-                        session.close()
+    # Bloco de verificação de código — fluxo de LOGIN (conta não verificada)
+    if aguardando_verificacao and st.session_state.get("verificacao_pos_login"):
+        with st.sidebar:
+            st.warning(
+                "Sua conta ainda não foi verificada. "
+                "Por favor, insira o código de verificação enviado para seu e-mail."
+            )
+            codigo = st.text_input(
+                "Código de Verificação", key="codigo_login")
+            if st.button("Confirmar Código", key="confirmar_codigo_login"):
+                verificar_codigo(st.session_state.temp_email, codigo)
 
     if "verificar_pagamento" not in st.session_state:
         st.session_state.verificar_pagamento = False
@@ -690,14 +488,6 @@ def interface():
 # Landing / principal
 # =========================
 def main():
-    # Detecta token de reset na URL (?reset_token=...)
-    params = st.query_params
-    reset_token = params.get("reset_token", None)
-
-    if reset_token:
-        tela_nova_senha(reset_token)
-        return
-
     if not st.session_state.get("logged_in"):
         interface()
 
@@ -878,7 +668,8 @@ def main():
                 "logged_in",
                 "codigo_confirmado",
                 "temp_email",
-                "tela",
+                "verificacao_pos_login",
+                "cadastro_realizado",
                 "name",
                 "email",
                 "image",
