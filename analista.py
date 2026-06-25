@@ -1,5 +1,5 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.1
+# analista.py  —  Oráculo Analista  v2.2
 # Interface Streamlit integrada ao Runtime (Claude Code arch)
 # ============================================================
 import io
@@ -35,6 +35,45 @@ icons = {
     "user":      "./src/img/usuario.jpg",
 }
 
+CSS_GLOBAL = """
+<style>
+/* ── Gradientes do título ─────────────────────────────── */
+.highlight-creme  {
+    background: linear-gradient(90deg,#f5f5dc,gold);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    font-weight:bold;
+}
+.highlight-dourado{
+    background: linear-gradient(90deg,gold,#f5f5dc);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    font-weight:bold;
+}
+
+/* ── Label animado CARREGAR ARQUIVOS ───────────────────── */
+@keyframes pulseGold {
+    0%   { opacity: 1;    letter-spacing: 0.12em;
+            text-shadow: 0 0 0px gold; }
+    50%  { opacity: 0.80; letter-spacing: 0.18em;
+            text-shadow: 0 0 16px gold, 0 0 32px #ffd70088; }
+    100% { opacity: 1;    letter-spacing: 0.12em;
+            text-shadow: 0 0 0px gold; }
+}
+.upload-label {
+    display: block;
+    font-size: 1.55rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, gold 0%, #fffbe6 50%, gold 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: pulseGold 2.4s ease-in-out infinite;
+    margin-bottom: 0.55rem;
+    user-select: none;
+}
+</style>
+"""
+
 
 # =========================
 # Runtime singleton por sessão
@@ -68,8 +107,10 @@ def obter_resumo_arquivos(arquivos: list) -> str:
 
 def responder_pergunta_simples(prompt: str, arquivos: list) -> str | None:
     prompt_lower = prompt.lower().strip()
-    if any(p in prompt_lower for p in ["quantas páginas", "numero de páginas", "número de páginas"]):
-        pdfs = [a for a in arquivos if a.get("type") == "pdf" and a.get("pages") is not None]
+    if any(p in prompt_lower for p in
+           ["quantas páginas", "numero de páginas", "número de páginas"]):
+        pdfs = [a for a in arquivos
+                if a.get("type") == "pdf" and a.get("pages") is not None]
         if len(pdfs) == 1:
             return f"O documento {pdfs[0]['name']} possui {pdfs[0]['pages']} páginas."
         elif len(pdfs) > 1:
@@ -90,7 +131,8 @@ def atualizar_primeiro_nome() -> None:
 
 def obter_avatar_usuario() -> str:
     user = st.session_state.get("user")
-    if user and getattr(user, "profile_image_path", None) and os.path.exists(user.profile_image_path):
+    if (user and getattr(user, "profile_image_path", None)
+            and os.path.exists(user.profile_image_path)):
         return user.profile_image_path
     return "./src/img/usuario.jpg"
 
@@ -115,12 +157,18 @@ def read_pdf(file) -> dict:
 
 
 def read_json(file) -> dict:
-    return {"text": json.dumps(json.load(file), indent=4, ensure_ascii=False), "pages": None, "type": "json"}
+    return {
+        "text": json.dumps(json.load(file), indent=4, ensure_ascii=False),
+        "pages": None, "type": "json"
+    }
 
 
 def read_xml(file) -> dict:
     tree = ET.parse(file)
-    return {"text": ET.tostring(tree.getroot(), encoding="utf-8").decode(), "pages": None, "type": "xml"}
+    return {
+        "text": ET.tostring(tree.getroot(), encoding="utf-8").decode(),
+        "pages": None, "type": "xml"
+    }
 
 
 def read_html(file) -> dict:
@@ -137,6 +185,34 @@ def read_txt(file) -> dict:
     return {"text": file.read().decode("utf-8"), "pages": None, "type": "txt"}
 
 
+def processar_arquivo(file) -> dict:
+    t = file.type
+    if t in (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+    ):
+        res = read_xlsx(file)
+    elif t == "application/pdf":
+        res = read_pdf(file)
+    elif t == "application/json":
+        res = read_json(file)
+    elif t in ("application/xml", "text/xml"):
+        res = read_xml(file)
+    elif t in (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    ):
+        res = read_docx(file)
+    elif t == "text/plain":
+        res = read_txt(file)
+    elif t in ("text/html", "text/htm"):
+        res = read_html(file)
+    else:
+        res = {"text": "Tipo não suportado.", "pages": None, "type": "unknown"}
+    res["name"] = file.name
+    return res
+
+
 # =========================
 # Dialog de instruções
 # =========================
@@ -144,95 +220,98 @@ def read_txt(file) -> dict:
 def dialog_instrucoes():
     st.markdown("""
     ### 🚀 Bem-vindo ao Oráculo Analista!
-    Aqui estão as instruções para aproveitar ao máximo a ferramenta:
 
     ---
 
     #### 📂 1. Carregar Documentos
-    - Clique em **"Escolher arquivo"** na área de upload acima do chat.
+    - Clique em **"Browse files"** na área **CARREGAR ARQUIVOS**.
     - Formatos suportados: `PDF`, `XLSX`, `XLS`, `DOCX`, `DOC`, `TXT`, `JSON`, `XML`, `HTML`.
     - Você pode carregar **múltiplos arquivos** ao mesmo tempo.
-    - Após selecionar os arquivos, clique no botão **▶️ Carregar Arquivos** para processar.
+
+    #### 🔍 2. Fazer a Leitura
+    - Após selecionar os arquivos, clique em **🔍 FAZER LEITURA**.
+    - O Oráculo irá ler e compreender o conteúdo de todos os documentos.
+
+    #### 💬 3. Fazer Perguntas
+    - Use o chat abaixo para perguntar sobre o conteúdo.
+    - Exemplos: *"Faça um resumo"*, *"Quais os pontos principais?"*, *"Compare as abas"*.
+
+    #### 📊 4. Exportar
+    - Use os botões **Baixar em Excel** ou **Baixar em PDF** no topo da página.
+
+    #### 🔄 5. Limpar
+    - Botão **🔄 Limpar Conversa** na barra lateral reinicia a sessão.
 
     ---
-
-    #### 💬 2. Fazer Perguntas
-    - Depois de carregar os arquivos, use o campo de chat no final da página.
-    - Exemplos de perguntas:
-      - *"Faça um resumo deste documento"*
-      - *"Quais são os principais pontos do relatório?"*
-      - *"Compare os dados das abas do Excel"*
-      - *"Quantas páginas tem este PDF?"*
-
-    ---
-
-    #### 📊 3. Exportar a Conversa
-    - Use os botões **Baixar em Excel** ou **Baixar em PDF** no topo da página para salvar o histórico.
-
-    ---
-
-    #### 💼 4. Planos e Agendamentos
-    - Digite palavras como **"plano"**, **"assinar"** ou **"preço"** para ver opções de assinatura.
-    - Digite **"reunião"** ou **"agendar"** para solicitar uma consultoria.
-
-    ---
-
-    #### 🔄 5. Limpar Conversa
-    - Use o botão **🔄 Limpar Conversa** na barra lateral para iniciar uma nova sessão.
-
-    ---
-    > ⚠️ **Dica:** Para melhores resultados, faça perguntas objetivas e específicas sobre o conteúdo dos documentos carregados.
+    > ⚠️ Faça perguntas objetivas e específicas para melhores resultados.
     """)
     if st.button("✅ Entendido!", use_container_width=True):
         st.rerun()
 
 
 # =========================
-# Upload no corpo principal
+# Seção CARREGAR ARQUIVOS + FAZER LEITURA
 # =========================
-def secao_upload() -> list:
-    """Renderiza uploader + botão Carregar no corpo principal. Retorna lista de arquivos processados."""
+def secao_upload_e_leitura() -> None:
+    """
+    Dois passos distintos:
+      1. Label animado + file_uploader  →  usuário seleciona os arquivos
+      2. Botão FAZER LEITURA           →  Oráculo processa e compreende
+    """
+    # --- Passo 1: label animado + uploader ---
+    st.markdown(
+        '<span class="upload-label">📂 Carregar Arquivos</span>',
+        unsafe_allow_html=True,
+    )
     uploaded = st.file_uploader(
-        "📂 Selecione seus arquivos para análise:",
-        type=["xlsx", "pdf", "xml", "json", "html", "htm", "doc", "docx", "txt", "xls"],
+        "",
+        type=["xlsx", "pdf", "xml", "json", "html", "htm",
+              "doc", "docx", "txt", "xls"],
         accept_multiple_files=True,
         key="main_uploader",
+        label_visibility="collapsed",
     )
 
-    processados = []
-    if st.button("▶️ Carregar Arquivos", use_container_width=False, key="btn_carregar_main"):
+    # --- Passo 2: botão FAZER LEITURA ---
+    if st.button("🔍 FAZER LEITURA", key="btn_fazer_leitura"):
         if not uploaded:
-            st.warning("⚠️ Nenhum arquivo selecionado.")
-            return processados
-        with st.spinner("Processando arquivos..."):
-            for file in uploaded:
-                t = file.type
-                if t in (
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "application/vnd.ms-excel",
-                ):
-                    res = read_xlsx(file)
-                elif t == "application/pdf":
-                    res = read_pdf(file)
-                elif t == "application/json":
-                    res = read_json(file)
-                elif t in ("application/xml", "text/xml"):
-                    res = read_xml(file)
-                elif t in (
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    "application/msword",
-                ):
-                    res = read_docx(file)
-                elif t == "text/plain":
-                    res = read_txt(file)
-                elif t in ("text/html", "text/htm"):
-                    res = read_html(file)
-                else:
-                    res = {"text": "Tipo não suportado.", "pages": None, "type": "unknown"}
-                res["name"] = file.name
-                processados.append(res)
-        st.success(f"✅ {len(processados)} arquivo(s) carregado(s) com sucesso!")
-    return processados
+            st.warning(
+                "⚠️ Selecione ao menos um arquivo antes de fazer a leitura."
+            )
+            return
+
+        with st.spinner(
+            "🔎 Oráculo Analista lendo e compreendendo os documentos..."
+        ):
+            processados = [processar_arquivo(f) for f in uploaded]
+
+        st.session_state["arquivos_processados"] = processados
+        st.session_state["full_content"]         = obter_resumo_arquivos(processados)
+
+        nomes = ", ".join(a["name"] for a in processados)
+        st.success(
+            f"✅ Leitura concluída! {len(processados)} documento(s) "
+            f"compreendido(s): **{nomes}**"
+        )
+
+        # Confirmação do assistente no chat
+        msg_leitura = (
+            f"📚 Entendido! Li e analisei {len(processados)} "
+            f"documento(s): **{nomes}**.\n\n"
+            "Agora você pode me fazer perguntas sobre o conteúdo. "
+            "Como posso ajudar? 💡"
+        )
+        st.session_state.setdefault("messages", []).append(
+            {"role": "assistant", "content": msg_leitura}
+        )
+
+        # Prévia do conteúdo lido
+        st.subheader("📄 Prévia dos Documentos Lidos:")
+        for arq in processados:
+            titulo = arq.get("name", "Arquivo")
+            if arq.get("pages"):
+                titulo += f" | {arq['pages']} páginas"
+            st.text_area(titulo, truncate(arq.get("text", ""), 3000), height=180)
 
 
 # =========================
@@ -240,9 +319,15 @@ def secao_upload() -> list:
 # =========================
 def verificar_intencao_usuario(prompt: str) -> str | None:
     p = prompt.lower()
-    if any(k in p for k in ["plano", "assinar", "upgrade", "mensal", "trimestral", "anual", "contratar", "preço"]):
+    if any(k in p for k in [
+        "plano", "assinar", "upgrade", "mensal",
+        "trimestral", "anual", "contratar", "preço"
+    ]):
         return "plano"
-    if any(k in p for k in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]):
+    if any(k in p for k in [
+        "reunião", "agendar", "consultoria",
+        "falar com o desenvolvedor", "encontro"
+    ]):
         return "reuniao"
     return None
 
@@ -251,7 +336,7 @@ def verificar_intencao_usuario(prompt: str) -> str | None:
 # Formulários de intenção
 # =========================
 def mostrar_formulario_plano() -> None:
-    st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
+    st.markdown("💡 Percebi que você está interessado em nossos planos!")
     with st.form("form_planos", clear_on_submit=True):
         st.markdown("### 💼 Planos Oráculo Analista")
         col1, col2 = st.columns(2)
@@ -262,19 +347,19 @@ def mostrar_formulario_plano() -> None:
             )
         with col2:
             links = {
-                "Mensal - R$ 49,90":      ("Assinar Mensal",      "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc"),
-                "Trimestral - R$ 119,90": ("Assinar Trimestral",  "https://sandbox.asaas.com/c/jsmak76vdo5fke23"),
-                "Anual - R$ 369,90":      ("Assinar Anual",       "https://sandbox.asaas.com/c/adu6nd24lf8jauo3"),
+                "Mensal - R$ 49,90":      ("Assinar Mensal",     "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc"),
+                "Trimestral - R$ 119,90": ("Assinar Trimestral", "https://sandbox.asaas.com/c/jsmak76vdo5fke23"),
+                "Anual - R$ 369,90":      ("Assinar Anual",      "https://sandbox.asaas.com/c/adu6nd24lf8jauo3"),
             }
             label, url = links[plano]
             st.link_button(label, url)
         if st.form_submit_button("Confirmar plano"):
-            st.success("✅ Plano selecionado! Você será redirecionado para concluir a assinatura.")
+            st.success("✅ Plano selecionado! Você será redirecionado.")
             st.balloons()
 
 
 def mostrar_formulario_reuniao() -> None:
-    st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha abaixo:")
+    st.markdown("📅 Preencha os dados para agendar uma reunião:")
     with st.form("form_agendamento", clear_on_submit=True):
         nome     = st.text_input("Nome completo")
         empresa  = st.text_input("Empresa (opcional)")
@@ -284,8 +369,10 @@ def mostrar_formulario_reuniao() -> None:
         hora     = st.time_input("Horário")
         if st.form_submit_button("Agendar"):
             webhook = config("WEBHOOK_AGENDA_ANALISTA", default="")
-            payload = {"nome": nome, "empresa": empresa, "whatsapp": whatsapp,
-                       "email": email, "data": str(data), "hora": str(hora)}
+            payload = {
+                "nome": nome, "empresa": empresa, "whatsapp": whatsapp,
+                "email": email, "data": str(data), "hora": str(hora),
+            }
             try:
                 r = requests.post(webhook, json=payload, timeout=20)
                 if r.status_code == 200:
@@ -303,16 +390,10 @@ def mostrar_formulario_reuniao() -> None:
 def oraculo_analista() -> None:
     atualizar_primeiro_nome()
 
-    # CSS
-    st.markdown("""
-        <style>
-        .highlight-creme  { background: linear-gradient(90deg,#f5f5dc,gold);
-                            -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
-        .highlight-dourado{ background: linear-gradient(90deg,gold,#f5f5dc);
-                            -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
-        </style>""", unsafe_allow_html=True)
+    # CSS global
+    st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
-    # Título
+    # ── Título ──────────────────────────────────────────────
     st.markdown(
         "<h1 class='title'>Análise rápida e precisa com o "
         "<span class='highlight-creme'>Oráculo</span> "
@@ -320,14 +401,17 @@ def oraculo_analista() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Linha de botões abaixo do título ─────────────────────────────
+    # ── Linha de botões abaixo do título ─────────────────────
     from src.tools.export_tool import ExportTool
     msgs = st.session_state.get("messages", [])
-
     col_inst, col_exp1, col_exp2 = st.columns([2, 1.5, 1.5])
 
     with col_inst:
-        if st.button("💡 Como usar o Oráculo Analista", use_container_width=True, key="btn_instrucoes"):
+        if st.button(
+            "💡 Como usar o Oráculo Analista",
+            use_container_width=True,
+            key="btn_instrucoes",
+        ):
             dialog_instrucoes()
 
     with col_exp1:
@@ -336,17 +420,18 @@ def oraculo_analista() -> None:
                 exp   = ExportTool()
                 excel = exp(format="excel", messages=msgs)
                 st.download_button(
-                    "📊 Baixar em Excel",
-                    data=excel,
+                    "📊 Baixar em Excel", data=excel,
                     file_name="chat_oraculo.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="dl_excel_top",
+                    use_container_width=True, key="dl_excel_top",
                 )
             except Exception as e:
                 st.error(f"Erro ao gerar Excel: {e}")
         else:
-            st.button("📊 Baixar em Excel", disabled=True, use_container_width=True, key="dl_excel_dis")
+            st.button(
+                "📊 Baixar em Excel", disabled=True,
+                use_container_width=True, key="dl_excel_dis",
+            )
 
     with col_exp2:
         if msgs:
@@ -354,35 +439,26 @@ def oraculo_analista() -> None:
                 exp = ExportTool()
                 pdf = exp(format="pdf", messages=msgs)
                 st.download_button(
-                    "📄 Baixar em PDF",
-                    data=io.BytesIO(pdf),
-                    file_name="chat_oraculo.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    key="dl_pdf_top",
+                    "📄 Baixar em PDF", data=io.BytesIO(pdf),
+                    file_name="chat_oraculo.pdf", mime="application/pdf",
+                    use_container_width=True, key="dl_pdf_top",
                 )
             except Exception as e:
                 st.error(f"Erro ao gerar PDF: {e}")
         else:
-            st.button("📄 Baixar em PDF", disabled=True, use_container_width=True, key="dl_pdf_dis")
+            st.button(
+                "📄 Baixar em PDF", disabled=True,
+                use_container_width=True, key="dl_pdf_dis",
+            )
 
     st.markdown("---")
 
-    # ── Upload de arquivos no corpo principal ──────────────────────
-    arquivos = secao_upload()
-    if arquivos:
-        st.session_state["arquivos_processados"] = arquivos
-        st.session_state["full_content"]         = obter_resumo_arquivos(arquivos)
-        st.subheader("Conteúdo dos Arquivos Carregados:")
-        for i, arq in enumerate(arquivos):
-            titulo = arq.get("name", f"Arquivo {i+1}")
-            if arq.get("pages"):
-                titulo += f" | {arq['pages']} páginas"
-            st.text_area(titulo, truncate(arq.get("text", ""), 3000), height=200)
+    # ── CARREGAR ARQUIVOS + FAZER LEITURA ────────────────────
+    secao_upload_e_leitura()
 
     st.markdown("---")
 
-    # ── Sidebar ────────────────────────────────────────────────────
+    # ── Sidebar ──────────────────────────────────────────
     if os.path.exists("./src/img/perfil-analista.png"):
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
@@ -396,14 +472,17 @@ def oraculo_analista() -> None:
 
     render_cost_widget()
 
-    # ── Histórico de mensagens ─────────────────────────────────────
+    # ── Histórico de mensagens ─────────────────────────────
     if "messages" not in st.session_state:
         nome = st.session_state.get("primeiro_nome", "Usuário")
         st.session_state["messages"] = [{
             "role": "assistant",
             "content": (
-                f"🌟 {nome}, estou aqui para te ajudar a analisar documentos. "
-                "Carregue seus arquivos acima e faça suas perguntas! 💡"
+                f"🌟 Olá, {nome}! Sou o Oráculo Analista.\n\n"
+                "**Para começar:**\n"
+                "1. Selecione seus arquivos em **📂 CARREGAR ARQUIVOS** acima\n"
+                "2. Clique em **🔍 FAZER LEITURA** para que eu compreenda o conteúdo\n"
+                "3. Depois é só me perguntar! 💡"
             ),
         }]
 
@@ -412,8 +491,10 @@ def oraculo_analista() -> None:
         with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
 
-    # ── Input do chat ──────────────────────────────────────────────
-    if prompt := st.chat_input("Digite sua pergunta aqui:", key="chat_input_analista"):
+    # ── Chat input ───────────────────────────────────────
+    if prompt := st.chat_input(
+        "Digite sua pergunta aqui:", key="chat_input_analista"
+    ):
         avatar   = obter_avatar_usuario()
         intencao = verificar_intencao_usuario(prompt)
 
@@ -429,7 +510,9 @@ def oraculo_analista() -> None:
         if resposta_local:
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 st.write(resposta_local)
-            st.session_state["messages"].append({"role": "assistant", "content": resposta_local})
+            st.session_state["messages"].append(
+                {"role": "assistant", "content": resposta_local}
+            )
             return
 
         if intencao:
