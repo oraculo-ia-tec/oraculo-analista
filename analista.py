@@ -1,11 +1,10 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.0
+# analista.py  —  Oráculo Analista  v2.1
 # Interface Streamlit integrada ao Runtime (Claude Code arch)
 # ============================================================
 import io
 import json
 import os
-import re
 import time
 import xml.etree.ElementTree as ET
 
@@ -16,14 +15,10 @@ from decouple import config
 from docx import Document
 from PyPDF2 import PdfReader
 
-# ─────────────────────────────────────────────────────────────
-# Runtime (nova arquitetura Claude Code)
-# ─────────────────────────────────────────────────────────────
 from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
 from src.constants.settings import (
     MAX_TOKENS_FREE_PLAN,
-    MAX_TOKENS_PRO_PLAN,
     DEFAULT_MODEL,
 )
 from src.utils.helpers import truncate
@@ -45,7 +40,6 @@ icons = {
 # Runtime singleton por sessão
 # =========================
 def get_runtime() -> Runtime:
-    """Retorna o Runtime da sessão atual (criado uma vez por sessão)."""
     if "_runtime" not in st.session_state:
         st.session_state["_runtime"] = Runtime(
             api_key=config("GROQ_API_KEY", default=""),
@@ -144,46 +138,100 @@ def read_txt(file) -> dict:
 
 
 # =========================
-# Upload para análise
+# Dialog de instruções
 # =========================
-def carregar_arquivos() -> list:
-    uploaded = st.sidebar.file_uploader(
-        "Coloque seu arquivo aqui:",
+@st.dialog("💡 Como usar o Oráculo Analista", width="large")
+def dialog_instrucoes():
+    st.markdown("""
+    ### 🚀 Bem-vindo ao Oráculo Analista!
+    Aqui estão as instruções para aproveitar ao máximo a ferramenta:
+
+    ---
+
+    #### 📂 1. Carregar Documentos
+    - Clique em **"Escolher arquivo"** na área de upload acima do chat.
+    - Formatos suportados: `PDF`, `XLSX`, `XLS`, `DOCX`, `DOC`, `TXT`, `JSON`, `XML`, `HTML`.
+    - Você pode carregar **múltiplos arquivos** ao mesmo tempo.
+    - Após selecionar os arquivos, clique no botão **▶️ Carregar Arquivos** para processar.
+
+    ---
+
+    #### 💬 2. Fazer Perguntas
+    - Depois de carregar os arquivos, use o campo de chat no final da página.
+    - Exemplos de perguntas:
+      - *"Faça um resumo deste documento"*
+      - *"Quais são os principais pontos do relatório?"*
+      - *"Compare os dados das abas do Excel"*
+      - *"Quantas páginas tem este PDF?"*
+
+    ---
+
+    #### 📊 3. Exportar a Conversa
+    - Use os botões **Baixar em Excel** ou **Baixar em PDF** no topo da página para salvar o histórico.
+
+    ---
+
+    #### 💼 4. Planos e Agendamentos
+    - Digite palavras como **"plano"**, **"assinar"** ou **"preço"** para ver opções de assinatura.
+    - Digite **"reunião"** ou **"agendar"** para solicitar uma consultoria.
+
+    ---
+
+    #### 🔄 5. Limpar Conversa
+    - Use o botão **🔄 Limpar Conversa** na barra lateral para iniciar uma nova sessão.
+
+    ---
+    > ⚠️ **Dica:** Para melhores resultados, faça perguntas objetivas e específicas sobre o conteúdo dos documentos carregados.
+    """)
+    if st.button("✅ Entendido!", use_container_width=True):
+        st.rerun()
+
+
+# =========================
+# Upload no corpo principal
+# =========================
+def secao_upload() -> list:
+    """Renderiza uploader + botão Carregar no corpo principal. Retorna lista de arquivos processados."""
+    uploaded = st.file_uploader(
+        "📂 Selecione seus arquivos para análise:",
         type=["xlsx", "pdf", "xml", "json", "html", "htm", "doc", "docx", "txt", "xls"],
         accept_multiple_files=True,
+        key="main_uploader",
     )
+
     processados = []
-    if st.sidebar.button("CARREGAR"):
+    if st.button("▶️ Carregar Arquivos", use_container_width=False, key="btn_carregar_main"):
         if not uploaded:
-            st.warning("Nenhum arquivo selecionado.")
+            st.warning("⚠️ Nenhum arquivo selecionado.")
             return processados
-        for file in uploaded:
-            t = file.type
-            if t in (
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-excel",
-            ):
-                res = read_xlsx(file)
-            elif t == "application/pdf":
-                res = read_pdf(file)
-            elif t == "application/json":
-                res = read_json(file)
-            elif t in ("application/xml", "text/xml"):
-                res = read_xml(file)
-            elif t in (
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            ):
-                res = read_docx(file)
-            elif t == "text/plain":
-                res = read_txt(file)
-            elif t in ("text/html", "text/htm"):
-                res = read_html(file)
-            else:
-                res = {"text": "Tipo não suportado.", "pages": None, "type": "unknown"}
-            res["name"] = file.name
-            processados.append(res)
-            st.write(f"**Arquivo carregado:** {file.name}")
+        with st.spinner("Processando arquivos..."):
+            for file in uploaded:
+                t = file.type
+                if t in (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-excel",
+                ):
+                    res = read_xlsx(file)
+                elif t == "application/pdf":
+                    res = read_pdf(file)
+                elif t == "application/json":
+                    res = read_json(file)
+                elif t in ("application/xml", "text/xml"):
+                    res = read_xml(file)
+                elif t in (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/msword",
+                ):
+                    res = read_docx(file)
+                elif t == "text/plain":
+                    res = read_txt(file)
+                elif t in ("text/html", "text/htm"):
+                    res = read_html(file)
+                else:
+                    res = {"text": "Tipo não suportado.", "pages": None, "type": "unknown"}
+                res["name"] = file.name
+                processados.append(res)
+        st.success(f"✅ {len(processados)} arquivo(s) carregado(s) com sucesso!")
     return processados
 
 
@@ -250,35 +298,12 @@ def mostrar_formulario_reuniao() -> None:
 
 
 # =========================
-# Exportação
-# =========================
-def botoes_exportacao() -> None:
-    from src.tools.export_tool import ExportTool
-    msgs = st.session_state.get("messages", [])
-    if not msgs:
-        return
-    exp = ExportTool()
-    try:
-        excel = exp(format="excel", messages=msgs)
-        st.download_button("📊 Baixar conversa em Excel", data=excel,
-                           file_name="chat_oraculo.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e:
-        st.error(f"Erro ao gerar Excel: {e}")
-    try:
-        pdf   = exp(format="pdf", messages=msgs)
-        st.download_button("📄 Baixar conversa em PDF", data=io.BytesIO(pdf),
-                           file_name="chat_oraculo.pdf", mime="application/pdf")
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {e}")
-
-
-# =========================
 # Interface principal
 # =========================
 def oraculo_analista() -> None:
     atualizar_primeiro_nome()
 
+    # CSS
     st.markdown("""
         <style>
         .highlight-creme  { background: linear-gradient(90deg,#f5f5dc,gold);
@@ -287,6 +312,7 @@ def oraculo_analista() -> None:
                             -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
         </style>""", unsafe_allow_html=True)
 
+    # Título
     st.markdown(
         "<h1 class='title'>Análise rápida e precisa com o "
         "<span class='highlight-creme'>Oráculo</span> "
@@ -294,20 +320,56 @@ def oraculo_analista() -> None:
         unsafe_allow_html=True,
     )
 
-    if os.path.exists("./src/img/perfil-analista.png"):
-        st.sidebar.image("./src/img/perfil-analista.png", width=500)
+    # ── Linha de botões abaixo do título ─────────────────────────────
+    from src.tools.export_tool import ExportTool
+    msgs = st.session_state.get("messages", [])
 
-    # ── botão Limpar ──────────────────────────────────────────
-    if st.sidebar.button("🔄 Limpar Conversa"):
-        runtime = get_runtime()
-        runtime.reset_session()
-        st.rerun()
+    col_inst, col_exp1, col_exp2 = st.columns([2, 1.5, 1.5])
 
-    # ── widget de custo (hooks) ───────────────────────────────
-    render_cost_widget()
+    with col_inst:
+        if st.button("💡 Como usar o Oráculo Analista", use_container_width=True, key="btn_instrucoes"):
+            dialog_instrucoes()
 
-    # ── carregamento de arquivos ──────────────────────────────
-    arquivos = carregar_arquivos()
+    with col_exp1:
+        if msgs:
+            try:
+                exp   = ExportTool()
+                excel = exp(format="excel", messages=msgs)
+                st.download_button(
+                    "📊 Baixar em Excel",
+                    data=excel,
+                    file_name="chat_oraculo.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_excel_top",
+                )
+            except Exception as e:
+                st.error(f"Erro ao gerar Excel: {e}")
+        else:
+            st.button("📊 Baixar em Excel", disabled=True, use_container_width=True, key="dl_excel_dis")
+
+    with col_exp2:
+        if msgs:
+            try:
+                exp = ExportTool()
+                pdf = exp(format="pdf", messages=msgs)
+                st.download_button(
+                    "📄 Baixar em PDF",
+                    data=io.BytesIO(pdf),
+                    file_name="chat_oraculo.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="dl_pdf_top",
+                )
+            except Exception as e:
+                st.error(f"Erro ao gerar PDF: {e}")
+        else:
+            st.button("📄 Baixar em PDF", disabled=True, use_container_width=True, key="dl_pdf_dis")
+
+    st.markdown("---")
+
+    # ── Upload de arquivos no corpo principal ──────────────────────
+    arquivos = secao_upload()
     if arquivos:
         st.session_state["arquivos_processados"] = arquivos
         st.session_state["full_content"]         = obter_resumo_arquivos(arquivos)
@@ -318,13 +380,31 @@ def oraculo_analista() -> None:
                 titulo += f" | {arq['pages']} páginas"
             st.text_area(titulo, truncate(arq.get("text", ""), 3000), height=200)
 
-    # ── histórico inicial ─────────────────────────────────────
+    st.markdown("---")
+
+    # ── Sidebar ────────────────────────────────────────────────────
+    if os.path.exists("./src/img/perfil-analista.png"):
+        st.sidebar.image("./src/img/perfil-analista.png", width=500)
+
+    if st.sidebar.button("🔄 Limpar Conversa"):
+        runtime = get_runtime()
+        runtime.reset_session()
+        st.session_state.pop("messages", None)
+        st.session_state.pop("arquivos_processados", None)
+        st.session_state.pop("full_content", None)
+        st.rerun()
+
+    render_cost_widget()
+
+    # ── Histórico de mensagens ─────────────────────────────────────
     if "messages" not in st.session_state:
         nome = st.session_state.get("primeiro_nome", "Usuário")
         st.session_state["messages"] = [{
             "role": "assistant",
-            "content": f"🌟 {nome}, estou aqui para te ajudar a analisar documentos. "
-                       "Carregue seus arquivos e faça suas perguntas! 💡",
+            "content": (
+                f"🌟 {nome}, estou aqui para te ajudar a analisar documentos. "
+                "Carregue seus arquivos acima e faça suas perguntas! 💡"
+            ),
         }]
 
     for msg in st.session_state["messages"]:
@@ -332,7 +412,7 @@ def oraculo_analista() -> None:
         with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
 
-    # ── input do usuário ──────────────────────────────────────
+    # ── Input do chat ──────────────────────────────────────────────
     if prompt := st.chat_input("Digite sua pergunta aqui:", key="chat_input_analista"):
         avatar   = obter_avatar_usuario()
         intencao = verificar_intencao_usuario(prompt)
@@ -340,13 +420,11 @@ def oraculo_analista() -> None:
         with st.chat_message("user", avatar=avatar):
             st.write(prompt)
 
-        # salva somente o user neste ponto (Runtime salva os dois após a resposta)
-        if "messages" not in st.session_state:
-            st.session_state["messages"] = []
-        st.session_state["messages"].append({"role": "user", "content": prompt})
+        st.session_state.setdefault("messages", []).append(
+            {"role": "user", "content": prompt}
+        )
 
-        # ── resposta simples (sem LLM) ────────────────────────
-        arquivos_sess = st.session_state.get("arquivos_processados", [])
+        arquivos_sess  = st.session_state.get("arquivos_processados", [])
         resposta_local = responder_pergunta_simples(prompt, arquivos_sess)
         if resposta_local:
             with st.chat_message("assistant", avatar=icons["assistant"]):
@@ -354,7 +432,6 @@ def oraculo_analista() -> None:
             st.session_state["messages"].append({"role": "assistant", "content": resposta_local})
             return
 
-        # ── intenção (plano / reunião) ────────────────────────
         if intencao:
             time.sleep(1)
             with st.chat_message("assistant", avatar=icons["assistant"]):
@@ -364,7 +441,6 @@ def oraculo_analista() -> None:
                     mostrar_formulario_reuniao()
             return
 
-        # ── resposta via Runtime (Claude Code arch) ───────────
         with st.chat_message("assistant", avatar=icons["assistant"]):
             try:
                 runtime      = get_runtime()
@@ -375,7 +451,6 @@ def oraculo_analista() -> None:
                     def _stream_cb(text: str):
                         container.markdown(text)
 
-                    # Remove o último user da session (Runtime vai re-salvar o par)
                     st.session_state["messages"].pop()
 
                     response = runtime.run(
@@ -385,12 +460,12 @@ def oraculo_analista() -> None:
                     )
 
                 container.markdown(response)
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": response}
+                )
 
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {e}")
-
-    # ── botões de exportação ──────────────────────────────────
-    botoes_exportacao()
 
 
 if __name__ == "__main__":
