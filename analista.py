@@ -1,6 +1,5 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.2
-# Interface Streamlit integrada ao Runtime (Claude Code arch)
+# analista.py  —  Oráculo Analista  v2.3
 # ============================================================
 import io
 import json
@@ -17,11 +16,7 @@ from PyPDF2 import PdfReader
 
 from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
-from src.constants.settings import (
-    MAX_TOKENS_FREE_PLAN,
-    DEFAULT_MODEL,
-)
-from src.utils.helpers import truncate
+from src.constants.settings import MAX_TOKENS_FREE_PLAN, DEFAULT_MODEL
 
 
 # =========================
@@ -37,7 +32,6 @@ icons = {
 
 CSS_GLOBAL = """
 <style>
-/* ── Gradientes do título ─────────────────────────────── */
 .highlight-creme  {
     background: linear-gradient(90deg,#f5f5dc,gold);
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
@@ -48,31 +42,38 @@ CSS_GLOBAL = """
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
     font-weight:bold;
 }
-
-/* ── Label animado CARREGAR ARQUIVOS ───────────────────── */
 @keyframes pulseGold {
-    0%   { opacity: 1;    letter-spacing: 0.12em;
-            text-shadow: 0 0 0px gold; }
-    50%  { opacity: 0.80; letter-spacing: 0.18em;
-            text-shadow: 0 0 16px gold, 0 0 32px #ffd70088; }
-    100% { opacity: 1;    letter-spacing: 0.12em;
-            text-shadow: 0 0 0px gold; }
+    0%   { opacity:1;    letter-spacing:0.12em; text-shadow:0 0 0px gold; }
+    50%  { opacity:0.80; letter-spacing:0.18em; text-shadow:0 0 16px gold,0 0 32px #ffd70088; }
+    100% { opacity:1;    letter-spacing:0.12em; text-shadow:0 0 0px gold; }
 }
 .upload-label {
-    display: block;
-    font-size: 1.55rem;
-    font-weight: 900;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, gold 0%, #fffbe6 50%, gold 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: pulseGold 2.4s ease-in-out infinite;
-    margin-bottom: 0.55rem;
-    user-select: none;
+    display:block;
+    font-size:1.55rem;
+    font-weight:900;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    background:linear-gradient(90deg,gold 0%,#fffbe6 50%,gold 100%);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    animation:pulseGold 2.4s ease-in-out infinite;
+    margin-bottom:0.55rem;
+    user-select:none;
 }
 </style>
 """
+
+
+# =========================
+# Truncate local seguro (converte None/qualquer tipo para str)
+# =========================
+def _truncate(text, limite: int = 10_000) -> str:
+    if text is None:
+        return ""
+    text = str(text)
+    if len(text) <= limite:
+        return text
+    return text[:limite] + f"\n\n[... truncado após {limite} caracteres ...]"
 
 
 # =========================
@@ -89,7 +90,7 @@ def get_runtime() -> Runtime:
 
 
 # =========================
-# Utilidades de contexto
+# Contexto dos arquivos
 # =========================
 def obter_resumo_arquivos(arquivos: list) -> str:
     blocos = []
@@ -97,7 +98,7 @@ def obter_resumo_arquivos(arquivos: list) -> str:
         nome  = arq.get("name", "arquivo")
         tipo  = arq.get("type", "?")
         pags  = arq.get("pages")
-        texto = truncate(arq.get("text", ""), limite=6000)
+        texto = _truncate(arq.get("text") or "", 6000)
         meta  = f"Arquivo: {nome} | Tipo: {tipo}"
         if pags:
             meta += f" | Páginas: {pags}"
@@ -105,7 +106,7 @@ def obter_resumo_arquivos(arquivos: list) -> str:
     return "\n\n".join(blocos)
 
 
-def responder_pergunta_simples(prompt: str, arquivos: list) -> str | None:
+def responder_pergunta_simples(prompt: str, arquivos: list):
     prompt_lower = prompt.lower().strip()
     if any(p in prompt_lower for p in
            ["quantas páginas", "numero de páginas", "número de páginas"]):
@@ -114,7 +115,7 @@ def responder_pergunta_simples(prompt: str, arquivos: list) -> str | None:
         if len(pdfs) == 1:
             return f"O documento {pdfs[0]['name']} possui {pdfs[0]['pages']} páginas."
         elif len(pdfs) > 1:
-            return "Documentos PDF carregados:\n" + "\n".join(
+            return "Documentos PDF:\n" + "\n".join(
                 f"{p['name']}: {p['pages']} páginas" for p in pdfs
             )
     return None
@@ -138,51 +139,70 @@ def obter_avatar_usuario() -> str:
 
 
 # =========================
-# Leitores de arquivo
+# Leitores de arquivo (todos com try/except e retorno str garantido)
 # =========================
 def read_xlsx(file) -> dict:
     text = ""
-    with pd.ExcelFile(file) as xls:
-        for sheet in xls.sheet_names:
-            df = pd.read_excel(xls, sheet_name=sheet)
-            text += f"--- Aba: {sheet} ---\n{df.to_string()}\n\n"
-    return {"text": text, "pages": None, "type": "xlsx"}
+    try:
+        with pd.ExcelFile(file) as xls:
+            for sheet in xls.sheet_names:
+                df = pd.read_excel(xls, sheet_name=sheet)
+                text += f"--- Aba: {sheet} ---\n{df.to_string()}\n\n"
+    except Exception as e:
+        text = f"Erro ao ler XLSX: {e}"
+    return {"text": text or "", "pages": None, "type": "xlsx"}
 
 
 def read_pdf(file) -> dict:
-    reader     = PdfReader(file)
-    total_pags = len(reader.pages)
-    text       = "".join((p.extract_text() or "") + "\n" for p in reader.pages)
-    return {"text": text, "pages": total_pags, "type": "pdf"}
+    try:
+        reader     = PdfReader(file)
+        total_pags = len(reader.pages)
+        text       = "".join((p.extract_text() or "") + "\n" for p in reader.pages)
+    except Exception as e:
+        return {"text": f"Erro ao ler PDF: {e}", "pages": None, "type": "pdf"}
+    return {"text": text or "", "pages": total_pags, "type": "pdf"}
 
 
 def read_json(file) -> dict:
-    return {
-        "text": json.dumps(json.load(file), indent=4, ensure_ascii=False),
-        "pages": None, "type": "json"
-    }
+    try:
+        text = json.dumps(json.load(file), indent=4, ensure_ascii=False)
+    except Exception as e:
+        text = f"Erro ao ler JSON: {e}"
+    return {"text": text or "", "pages": None, "type": "json"}
 
 
 def read_xml(file) -> dict:
-    tree = ET.parse(file)
-    return {
-        "text": ET.tostring(tree.getroot(), encoding="utf-8").decode(),
-        "pages": None, "type": "xml"
-    }
+    try:
+        tree = ET.parse(file)
+        text = ET.tostring(tree.getroot(), encoding="utf-8").decode()
+    except Exception as e:
+        text = f"Erro ao ler XML: {e}"
+    return {"text": text or "", "pages": None, "type": "xml"}
 
 
 def read_html(file) -> dict:
-    return {"text": file.read().decode("utf-8"), "pages": None, "type": "html"}
+    try:
+        text = file.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        text = f"Erro ao ler HTML: {e}"
+    return {"text": text or "", "pages": None, "type": "html"}
 
 
 def read_docx(file) -> dict:
-    doc  = Document(file)
-    text = "\n".join(p.text for p in doc.paragraphs)
-    return {"text": text, "pages": None, "type": "docx"}
+    try:
+        doc  = Document(file)
+        text = "\n".join(p.text for p in doc.paragraphs)
+    except Exception as e:
+        text = f"Erro ao ler DOCX: {e}"
+    return {"text": text or "", "pages": None, "type": "docx"}
 
 
 def read_txt(file) -> dict:
-    return {"text": file.read().decode("utf-8"), "pages": None, "type": "txt"}
+    try:
+        text = file.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        text = f"Erro ao ler TXT: {e}"
+    return {"text": text or "", "pages": None, "type": "txt"}
 
 
 def processar_arquivo(file) -> dict:
@@ -208,8 +228,15 @@ def processar_arquivo(file) -> dict:
     elif t in ("text/html", "text/htm"):
         res = read_html(file)
     else:
-        res = {"text": "Tipo não suportado.", "pages": None, "type": "unknown"}
+        try:
+            text = file.read().decode("utf-8", errors="replace")
+        except Exception:
+            text = "Tipo de arquivo não suportado."
+        res = {"text": text, "pages": None, "type": "unknown"}
     res["name"] = file.name
+    # Garante string em qualquer caso
+    if not isinstance(res.get("text"), str):
+        res["text"] = str(res.get("text", ""))
     return res
 
 
@@ -224,8 +251,8 @@ def dialog_instrucoes():
     ---
 
     #### 📂 1. Carregar Documentos
-    - Clique em **"Browse files"** na área **CARREGAR ARQUIVOS**.
-    - Formatos suportados: `PDF`, `XLSX`, `XLS`, `DOCX`, `DOC`, `TXT`, `JSON`, `XML`, `HTML`.
+    - Clique em **"Browse files"** na área **📂 CARREGAR ARQUIVOS**.
+    - Formatos aceitos: `PDF`, `XLSX`, `XLS`, `DOCX`, `DOC`, `TXT`, `JSON`, `XML`, `HTML`.
     - Você pode carregar **múltiplos arquivos** ao mesmo tempo.
 
     #### 🔍 2. Fazer a Leitura
@@ -233,17 +260,17 @@ def dialog_instrucoes():
     - O Oráculo irá ler e compreender o conteúdo de todos os documentos.
 
     #### 💬 3. Fazer Perguntas
-    - Use o chat abaixo para perguntar sobre o conteúdo.
-    - Exemplos: *"Faça um resumo"*, *"Quais os pontos principais?"*, *"Compare as abas"*.
+    - Use o chat abaixo para perguntar sobre os documentos carregados.
+    - Exemplos: *"Faça um resumo"*, *"Quais os pontos principais?"*
 
     #### 📊 4. Exportar
-    - Use os botões **Baixar em Excel** ou **Baixar em PDF** no topo da página.
+    - Use **📊 Baixar em Excel** ou **📄 Baixar em PDF** para salvar a conversa.
 
     #### 🔄 5. Limpar
     - Botão **🔄 Limpar Conversa** na barra lateral reinicia a sessão.
 
     ---
-    > ⚠️ Faça perguntas objetivas e específicas para melhores resultados.
+    > ⚠️ Faça perguntas objetivas para melhores resultados.
     """)
     if st.button("✅ Entendido!", use_container_width=True):
         st.rerun()
@@ -253,12 +280,6 @@ def dialog_instrucoes():
 # Seção CARREGAR ARQUIVOS + FAZER LEITURA
 # =========================
 def secao_upload_e_leitura() -> None:
-    """
-    Dois passos distintos:
-      1. Label animado + file_uploader  →  usuário seleciona os arquivos
-      2. Botão FAZER LEITURA           →  Oráculo processa e compreende
-    """
-    # --- Passo 1: label animado + uploader ---
     st.markdown(
         '<span class="upload-label">📂 Carregar Arquivos</span>',
         unsafe_allow_html=True,
@@ -272,18 +293,25 @@ def secao_upload_e_leitura() -> None:
         label_visibility="collapsed",
     )
 
-    # --- Passo 2: botão FAZER LEITURA ---
-    if st.button("🔍 FAZER LEITURA", key="btn_fazer_leitura"):
+    if st.button("🔍 FAZER LEITURA", key="btn_fazer_leitura", type="primary"):
         if not uploaded:
-            st.warning(
-                "⚠️ Selecione ao menos um arquivo antes de fazer a leitura."
-            )
+            st.warning("⚠️ Selecione ao menos um arquivo antes de fazer a leitura.")
             return
 
-        with st.spinner(
-            "🔎 Oráculo Analista lendo e compreendendo os documentos..."
-        ):
-            processados = [processar_arquivo(f) for f in uploaded]
+        processados = []
+        erros       = []
+        with st.spinner("🔎 Oráculo Analista lendo e compreendendo os documentos..."):
+            for f in uploaded:
+                try:
+                    processados.append(processar_arquivo(f))
+                except Exception as e:
+                    erros.append(f"{f.name}: {e}")
+
+        if erros:
+            st.error("Erro em alguns arquivos:\n" + "\n".join(erros))
+
+        if not processados:
+            return
 
         st.session_state["arquivos_processados"] = processados
         st.session_state["full_content"]         = obter_resumo_arquivos(processados)
@@ -294,39 +322,35 @@ def secao_upload_e_leitura() -> None:
             f"compreendido(s): **{nomes}**"
         )
 
-        # Confirmação do assistente no chat
         msg_leitura = (
-            f"📚 Entendido! Li e analisei {len(processados)} "
-            f"documento(s): **{nomes}**.\n\n"
-            "Agora você pode me fazer perguntas sobre o conteúdo. "
-            "Como posso ajudar? 💡"
+            f"📚 Li e analisei {len(processados)} documento(s): **{nomes}**.\n\n"
+            "Agora você pode me fazer perguntas sobre o conteúdo. Como posso ajudar? 💡"
         )
         st.session_state.setdefault("messages", []).append(
             {"role": "assistant", "content": msg_leitura}
         )
 
-        # Prévia do conteúdo lido
         st.subheader("📄 Prévia dos Documentos Lidos:")
         for arq in processados:
             titulo = arq.get("name", "Arquivo")
             if arq.get("pages"):
                 titulo += f" | {arq['pages']} páginas"
-            st.text_area(titulo, truncate(arq.get("text", ""), 3000), height=180)
+            st.text_area(titulo, _truncate(arq.get("text", ""), 3000), height=180)
 
 
 # =========================
 # Intenção do usuário
 # =========================
-def verificar_intencao_usuario(prompt: str) -> str | None:
+def verificar_intencao_usuario(prompt: str):
     p = prompt.lower()
     if any(k in p for k in [
         "plano", "assinar", "upgrade", "mensal",
-        "trimestral", "anual", "contratar", "preço"
+        "trimestral", "anual", "contratar", "preço",
     ]):
         return "plano"
     if any(k in p for k in [
         "reunião", "agendar", "consultoria",
-        "falar com o desenvolvedor", "encontro"
+        "falar com o desenvolvedor", "encontro",
     ]):
         return "reuniao"
     return None
@@ -354,7 +378,7 @@ def mostrar_formulario_plano() -> None:
             label, url = links[plano]
             st.link_button(label, url)
         if st.form_submit_button("Confirmar plano"):
-            st.success("✅ Plano selecionado! Você será redirecionado.")
+            st.success("✅ Plano selecionado!")
             st.balloons()
 
 
@@ -370,8 +394,9 @@ def mostrar_formulario_reuniao() -> None:
         if st.form_submit_button("Agendar"):
             webhook = config("WEBHOOK_AGENDA_ANALISTA", default="")
             payload = {
-                "nome": nome, "empresa": empresa, "whatsapp": whatsapp,
-                "email": email, "data": str(data), "hora": str(hora),
+                "nome": nome, "empresa": empresa,
+                "whatsapp": whatsapp, "email": email,
+                "data": str(data), "hora": str(hora),
             }
             try:
                 r = requests.post(webhook, json=payload, timeout=20)
@@ -389,11 +414,9 @@ def mostrar_formulario_reuniao() -> None:
 # =========================
 def oraculo_analista() -> None:
     atualizar_primeiro_nome()
-
-    # CSS global
     st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
-    # ── Título ──────────────────────────────────────────────
+    # Título
     st.markdown(
         "<h1 class='title'>Análise rápida e precisa com o "
         "<span class='highlight-creme'>Oráculo</span> "
@@ -401,24 +424,20 @@ def oraculo_analista() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Linha de botões abaixo do título ─────────────────────
+    # Botões: instruções + exportação
     from src.tools.export_tool import ExportTool
     msgs = st.session_state.get("messages", [])
     col_inst, col_exp1, col_exp2 = st.columns([2, 1.5, 1.5])
 
     with col_inst:
-        if st.button(
-            "💡 Como usar o Oráculo Analista",
-            use_container_width=True,
-            key="btn_instrucoes",
-        ):
+        if st.button("💡 Como usar o Oráculo Analista",
+                     use_container_width=True, key="btn_instrucoes"):
             dialog_instrucoes()
 
     with col_exp1:
         if msgs:
             try:
-                exp   = ExportTool()
-                excel = exp(format="excel", messages=msgs)
+                excel = ExportTool()(format="excel", messages=msgs)
                 st.download_button(
                     "📊 Baixar em Excel", data=excel,
                     file_name="chat_oraculo.xlsx",
@@ -426,45 +445,34 @@ def oraculo_analista() -> None:
                     use_container_width=True, key="dl_excel_top",
                 )
             except Exception as e:
-                st.error(f"Erro ao gerar Excel: {e}")
+                st.error(f"Erro Excel: {e}")
         else:
-            st.button(
-                "📊 Baixar em Excel", disabled=True,
-                use_container_width=True, key="dl_excel_dis",
-            )
+            st.button("📊 Baixar em Excel", disabled=True,
+                      use_container_width=True, key="dl_excel_dis")
 
     with col_exp2:
         if msgs:
             try:
-                exp = ExportTool()
-                pdf = exp(format="pdf", messages=msgs)
+                pdf = ExportTool()(format="pdf", messages=msgs)
                 st.download_button(
                     "📄 Baixar em PDF", data=io.BytesIO(pdf),
                     file_name="chat_oraculo.pdf", mime="application/pdf",
                     use_container_width=True, key="dl_pdf_top",
                 )
             except Exception as e:
-                st.error(f"Erro ao gerar PDF: {e}")
+                st.error(f"Erro PDF: {e}")
         else:
-            st.button(
-                "📄 Baixar em PDF", disabled=True,
-                use_container_width=True, key="dl_pdf_dis",
-            )
+            st.button("📄 Baixar em PDF", disabled=True,
+                      use_container_width=True, key="dl_pdf_dis")
 
     st.markdown("---")
 
-    # ── CARREGAR ARQUIVOS + FAZER LEITURA ────────────────────
-    secao_upload_e_leitura()
-
-    st.markdown("---")
-
-    # ── Sidebar ──────────────────────────────────────────
+    # Sidebar
     if os.path.exists("./src/img/perfil-analista.png"):
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
     if st.sidebar.button("🔄 Limpar Conversa"):
-        runtime = get_runtime()
-        runtime.reset_session()
+        get_runtime().reset_session()
         st.session_state.pop("messages", None)
         st.session_state.pop("arquivos_processados", None)
         st.session_state.pop("full_content", None)
@@ -472,7 +480,12 @@ def oraculo_analista() -> None:
 
     render_cost_widget()
 
-    # ── Histórico de mensagens ─────────────────────────────
+    # Upload + FAZER LEITURA
+    secao_upload_e_leitura()
+
+    st.markdown("---")
+
+    # Histórico do chat
     if "messages" not in st.session_state:
         nome = st.session_state.get("primeiro_nome", "Usuário")
         st.session_state["messages"] = [{
@@ -481,7 +494,7 @@ def oraculo_analista() -> None:
                 f"🌟 Olá, {nome}! Sou o Oráculo Analista.\n\n"
                 "**Para começar:**\n"
                 "1. Selecione seus arquivos em **📂 CARREGAR ARQUIVOS** acima\n"
-                "2. Clique em **🔍 FAZER LEITURA** para que eu compreenda o conteúdo\n"
+                "2. Clique em **🔍 FAZER LEITURA** para que eu entenda o conteúdo\n"
                 "3. Depois é só me perguntar! 💡"
             ),
         }]
@@ -491,10 +504,8 @@ def oraculo_analista() -> None:
         with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
 
-    # ── Chat input ───────────────────────────────────────
-    if prompt := st.chat_input(
-        "Digite sua pergunta aqui:", key="chat_input_analista"
-    ):
+    # Chat input
+    if prompt := st.chat_input("Digite sua pergunta aqui:", key="chat_input_analista"):
         avatar   = obter_avatar_usuario()
         intencao = verificar_intencao_usuario(prompt)
 
@@ -535,7 +546,6 @@ def oraculo_analista() -> None:
                         container.markdown(text)
 
                     st.session_state["messages"].pop()
-
                     response = runtime.run(
                         user_input=prompt,
                         file_context=file_context,
@@ -546,7 +556,6 @@ def oraculo_analista() -> None:
                 st.session_state["messages"].append(
                     {"role": "assistant", "content": response}
                 )
-
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {e}")
 
