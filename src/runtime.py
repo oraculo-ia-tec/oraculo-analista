@@ -1,6 +1,7 @@
 # ============================================================
 # src/runtime.py
 # Runtime principal — gerencia o loop de sessão agêntica
+# Equivalente ao runtime.py do Claude Code
 # ============================================================
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from .constants.settings import (
     APP_NAME,
     DEFAULT_MODEL,
     MAX_TOKENS_FREE_PLAN,
+    MAX_TOKENS_PRO_PLAN,
     MAX_CONTEXT_CHARS,
 )
 from .query_engine import QueryEngine
@@ -21,39 +23,21 @@ from .tools.file_tools import FileReadTool
 from .tools.search_tool import WebSearchTool
 from .tools.export_tool import ExportTool
 from .utils.helpers import truncate, generate_id, now_iso
-
-
-def _get_groq_api_key(override: str | None = None) -> str:
-    """Lê a GROQ_API_KEY de st.secrets (Streamlit Cloud) ou variável de ambiente."""
-    if override:
-        return override
-    # 1. Streamlit Secrets (Streamlit Cloud / secrets.toml local)
-    try:
-        key = st.secrets.get("GROQ_API_KEY", "")
-        if key:
-            return key
-    except Exception:
-        pass
-    # 2. Fallback: variável de ambiente via python-decouple
-    try:
-        from decouple import config as decouple_config
-        key = decouple_config("GROQ_API_KEY", default="")
-        if key:
-            return key
-    except Exception:
-        pass
-    return ""
+from .utils.secrets import get_secret
 
 
 class Runtime:
     """
     Orquestra o loop completo de uma sessão:
+
       1. Inicializa hooks, tools, permissões e QueryEngine
       2. Recebe o input do usuário
       3. Monta o system prompt com contexto de arquivos + tools
       4. Chama o QueryEngine (que chama o LLM)
       5. Persiste a mensagem no histórico
       6. Retorna o texto gerado
+
+    Design: um Runtime por sessão Streamlit.
     """
 
     def __init__(
@@ -68,12 +52,14 @@ class Runtime:
 
         self.cost_hook  = CostHook()
         self.audit_hook = AuditHook()
+
         self.permissions = Permissions(permission_overrides)
 
         self.tools = ToolRegistry()
         self._register_default_tools()
 
-        key = _get_groq_api_key(api_key)
+        # Leitura da chave com fallback: st.secrets[groq] → st.secrets → os.environ
+        key = api_key or get_secret("GROQ_API_KEY", section="groq")
         self.engine = QueryEngine(
             api_key=key,
             model=model,
@@ -115,18 +101,33 @@ class Runtime:
         self.audit_hook.clear()
 
     def _register_default_tools(self) -> None:
-        for tool in [FileReadTool(), WebSearchTool(), ExportTool()]:
-            self.tools.register(
-                name=tool.name,
-                description=tool.description,
-                func=tool,
-                permission=tool.permission,
-            )
+        file_tool   = FileReadTool()
+        search_tool = WebSearchTool()
+        export_tool = ExportTool()
+
+        self.tools.register(
+            name=file_tool.name,
+            description=file_tool.description,
+            func=file_tool,
+            permission=file_tool.permission,
+        )
+        self.tools.register(
+            name=search_tool.name,
+            description=search_tool.description,
+            func=search_tool,
+            permission=search_tool.permission,
+        )
+        self.tools.register(
+            name=export_tool.name,
+            description=export_tool.description,
+            func=export_tool,
+            permission=export_tool.permission,
+        )
 
     def _build_system_prompt(self, file_context: str) -> str:
-        nome  = st.session_state.get("primeiro_nome", "Usuário")
-        tools = self.tools.describe_for_prompt()
-        ctx   = truncate(file_context, MAX_CONTEXT_CHARS)
+        nome   = st.session_state.get("primeiro_nome", "Usuário")
+        tools  = self.tools.describe_for_prompt()
+        ctx    = truncate(file_context, MAX_CONTEXT_CHARS)
 
         return f"""Você é o {APP_NAME}, doutor e especialista em análise de dados, \
 desenvolvido pela equipe Oráculo IA Tec.
@@ -150,5 +151,9 @@ Usuário atual: {nome}
     def _save_turn(self, user_input: str, response: str) -> None:
         if "messages" not in st.session_state:
             st.session_state["messages"] = []
-        st.session_state["messages"].append({"role": "user",      "content": user_input})
-        st.session_state["messages"].append({"role": "assistant", "content": response})
+        st.session_state["messages"].append(
+            {"role": "user",      "content": user_input}
+        )
+        st.session_state["messages"].append(
+            {"role": "assistant", "content": response}
+        )
