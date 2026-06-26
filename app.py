@@ -18,7 +18,7 @@ from analista import oraculo_analista
 # Configurações
 # =========================
 config = AutoConfig()
-DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo.db")
+DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo_analista.db")  # fix: banco correto
 WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
 VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
 
@@ -192,8 +192,6 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 
         st.session_state.temp_email = email
         st.session_state.verificacao_pos_login = False
-        # Sinaliza que o cadastro foi submetido para ocultar o formulário
-        st.session_state.cadastro_realizado = True
         st.success("Cadastro realizado. Verifique o código enviado por e-mail.")
         return True
 
@@ -210,8 +208,9 @@ def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
 # Verificação
 # =========================
 def verificar_codigo(email, codigo):
-    """Verificação chamada pelo fluxo de LOGIN (conta não verificada)."""
+    # fix: sessão fechada corretamente antes do st.rerun()
     session = Session()
+    login_email = None
     try:
         user = session.query(UserAnalise).filter_by(email=email).first()
 
@@ -219,71 +218,28 @@ def verificar_codigo(email, codigo):
             user.is_verified = True
             user.verification_code = None
             session.commit()
+            login_email = email
+        else:
+            st.error("Código incorreto.")
 
-            session2 = Session()
-            try:
-                user_fresh = session2.query(
-                    UserAnalise).filter_by(email=email).first()
-                st.session_state.user = user_fresh
-                st.session_state.logged_in = True
-                st.session_state.codigo_confirmado = True
-                st.session_state.temp_email = None
-                st.session_state.verificacao_pos_login = False
-                st.rerun()
-            finally:
-                session2.close()
-
-            return True
-
-        st.error("Código incorreto.")
-        return False
     finally:
         session.close()
 
-
-def verificar_codigo_cadastro(email, codigo):
-    """Verificação chamada pelo fluxo de CADASTRO — faz login automático e redireciona para o chat."""
-    session = Session()
-    try:
-        user = session.query(UserAnalise).filter_by(email=email).first()
-
-        if not user:
-            st.error("Usuário não encontrado.")
-            return False
-
-        if codigo != user.verification_code:
-            st.error("Código de verificação inválido.")
-            return False
-
-        # Marca conta como verificada
-        user.is_verified = True
-        user.verification_code = None
-        session.commit()
-
-        # Busca objeto atualizado em nova sessão para evitar DetachedInstanceError
+    # fix: rerun executado FORA do bloco de sessão, após fechamento seguro
+    if login_email:
         session2 = Session()
         try:
-            user_fresh = session2.query(UserAnalise).filter_by(email=email).first()
-            # Login automático e limpeza de estado
+            user_fresh = session2.query(UserAnalise).filter_by(email=login_email).first()
             st.session_state.user = user_fresh
             st.session_state.logged_in = True
             st.session_state.codigo_confirmado = True
             st.session_state.temp_email = None
-            st.session_state.verificacao_pos_login = False
-            st.session_state.cadastro_realizado = False
         finally:
             session2.close()
-
-        st.success("✅ Conta verificada com sucesso! Redirecionando...")
         st.rerun()
         return True
 
-    except Exception as e:
-        session.rollback()
-        st.error(f"Erro ao confirmar código: {e}")
-        return False
-    finally:
-        session.close()
+    return False
 
 
 # =========================
@@ -321,138 +277,159 @@ def interface():
         return
 
     st.sidebar.title("Oráculo Analista")
+    opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
 
-    # Determina se há verificação de código pendente
-    aguardando_verificacao = (
-        "temp_email" in st.session_state
-        and st.session_state.get("temp_email")
-        and not st.session_state.get("codigo_confirmado")
-    )
+    if opcao == "Cadastrar":
+        nome = st.sidebar.text_input("Nome")
+        zap = st.sidebar.text_input("WhatsApp")
+        email = st.sidebar.text_input("Email")
+        senha = st.sidebar.text_input("Senha", type="password")
+        imagem = st.sidebar.file_uploader(
+            "Imagem de Perfil", type=["png", "jpg", "jpeg"])
 
-    # Só exibe o radio e o formulário principal quando não há verificação pendente
-    if not aguardando_verificacao:
-        opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
+        if imagem:
+            st.sidebar.image(imagem, caption="Pré-visualização", width=150)
 
-        if opcao == "Cadastrar":
-            # Exibe campos de cadastro apenas enquanto o formulário não foi submetido
-            if not st.session_state.get("cadastro_realizado"):
-                nome = st.sidebar.text_input("Nome", key="cad_nome")
-                zap = st.sidebar.text_input("WhatsApp", key="cad_zap")
-                email = st.sidebar.text_input("Email", key="cad_email")
-                senha = st.sidebar.text_input("Senha", type="password", key="cad_senha")
-                imagem = st.sidebar.file_uploader(
-                    "Imagem de Perfil", type=["png", "jpg", "jpeg"], key="cad_imagem")
+        # fix: usa o mesmo banco do SQLAlchemy para buscar cargos
+        import sqlite3
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        cargos = []
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM cargo")
+            cargos = cursor.fetchall()
+            conn.close()
+        except Exception as e:
+            st.sidebar.error(f"Erro ao buscar cargos: {e}")
 
-                if imagem:
-                    st.sidebar.image(imagem, caption="Pré-visualização", width=150)
+        cargo_opcoes = {nome: id_ for id_, nome in cargos}
+        default_index = 0
+        if cargos:
+            for idx, (id_, nome) in enumerate(cargos):
+                if nome.lower() == "cliente":
+                    default_index = idx
+                    break
+            cargo_nome = st.sidebar.selectbox("Cargo", list(
+                cargo_opcoes.keys()), index=default_index)
+            cargo_id = cargo_opcoes[cargo_nome]
+        else:
+            cargo_nome = None
+            cargo_id = None
 
-                # Buscar cargos do banco
-                import sqlite3
-                cargos = []
-                try:
-                    conn = sqlite3.connect('oraculo_analista.db')
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT id, nome FROM cargo")
-                    cargos = cursor.fetchall()
-                    conn.close()
-                except Exception as e:
-                    st.sidebar.error(f"Erro ao buscar cargos: {e}")
+        if st.sidebar.button("Cadastrar"):
+            if not nome or not zap or not email or not senha:
+                st.sidebar.error("Preencha todos os campos obrigatórios.")
+            elif not cargo_id:
+                st.sidebar.error("Selecione um cargo.")
+            else:
+                cadastrar_usuario(
+                    name=nome,
+                    whatsapp=zap,
+                    email=email,
+                    password=senha,
+                    profile_image=imagem,
+                    cargo_id=cargo_id,
+                )
 
-                cargo_opcoes = {c_nome: c_id for c_id, c_nome in cargos}
-                default_index = 0
-                if cargos:
-                    for idx, (c_id, c_nome) in enumerate(cargos):
-                        if c_nome.lower() == "cliente":
-                            default_index = idx
-                            break
-                    cargo_nome = st.sidebar.selectbox("Cargo", list(
-                        cargo_opcoes.keys()), index=default_index, key="cad_cargo")
-                    cargo_id = cargo_opcoes[cargo_nome]
-                else:
-                    cargo_nome = None
-                    cargo_id = None
+    elif opcao == "Login":
+        email = st.sidebar.text_input("Email")
+        senha = st.sidebar.text_input("Senha", type="password")
 
-                if st.sidebar.button("Cadastrar", key="btn_cadastrar"):
-                    if not nome or not zap or not email or not senha:
-                        st.sidebar.error("Preencha todos os campos obrigatórios.")
-                    elif not cargo_id:
-                        st.sidebar.error("Selecione um cargo.")
-                    else:
-                        sucesso = cadastrar_usuario(
-                            name=nome,
-                            whatsapp=zap,
-                            email=email,
-                            password=senha,
-                            profile_image=imagem,
-                            cargo_id=cargo_id,
-                        )
-                        if sucesso:
-                            st.rerun()
+        if st.sidebar.button("Entrar"):
+            user = autenticar_usuario(email, senha)
+            if user:
+                st.session_state.user = user
+                st.session_state.logged_in = True
+                st.rerun()
 
-        elif opcao == "Login":
-            email = st.sidebar.text_input("Email", key="login_email")
-            senha = st.sidebar.text_input("Senha", type="password", key="login_senha")
-
-            if st.sidebar.button("Entrar", key="btn_entrar"):
-                user = autenticar_usuario(email, senha)
-                if user:
-                    st.session_state.user = user
-                    st.session_state.logged_in = True
-                    st.rerun()
-
-    # Bloco de verificação de código — fluxo de CADASTRO
-    if aguardando_verificacao and not st.session_state.get("verificacao_pos_login"):
+    if "temp_email" in st.session_state and not st.session_state.get("codigo_confirmado"):
         with st.sidebar:
-            st.info(
-                f"📧 Digite o código de verificação enviado para **{st.session_state.temp_email}**.")
+            if st.session_state.get("verificacao_pos_login"):
+                st.warning(
+                    "Sua conta ainda não foi verificada. "
+                    "Por favor, insira o código de verificação enviado para seu e-mail."
+                )
+                codigo = st.text_input(
+                    "Código de Verificação", key="codigo_login")
+                if st.button("Confirmar Código", key="confirmar_codigo_login"):
+                    verificar_codigo(st.session_state.temp_email, codigo)
+            else:
+                st.info(
+                    f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
+                if st.button("Reenviar Código"):
+                    session = Session()
+                    try:
+                        user = session.query(UserAnalise).filter_by(
+                            email=st.session_state.temp_email
+                        ).first()
 
-            if st.button("Reenviar Código", key="btn_reenviar"):
-                session = Session()
-                try:
-                    user = session.query(UserAnalise).filter_by(
-                        email=st.session_state.temp_email
-                    ).first()
+                        if not user:
+                            st.error("Usuário não encontrado para reenvio do código.")
+                        else:
+                            novo_codigo = gerar_codigo_verificacao()
+                            user.verification_code = novo_codigo
+                            session.commit()
 
-                    if not user:
-                        st.error("Usuário não encontrado para reenvio do código.")
-                    else:
-                        novo_codigo = gerar_codigo_verificacao()
-                        user.verification_code = novo_codigo
-                        session.commit()
+                            notificador = Notificador()
 
-                        notificador = Notificador()
-                        assunto = "Código de Verificação - Oráculo Analista"
-                        mensagem = f"""
-                        <h3>Olá, {user.name}</h3>
-                        <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
-                        <p>Use este código para ativar sua conta.</p>
-                        """
-                        notificador.enviar_email(user.email, assunto, mensagem)
-                        st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+                            assunto = "Código de Verificação - Oráculo Analista"
+                            mensagem = f"""
+                            <h3>Olá, {user.name}</h3>
+                            <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
+                            <p>Use este código para ativar sua conta.</p>
+                            """
 
-                except Exception as e:
-                    session.rollback()
-                    st.error(f"Erro ao reenviar e-mail de verificação: {e}")
-                finally:
-                    session.close()
+                            notificador.enviar_email(user.email, assunto, mensagem)
+                            st.success("Código reenviado com sucesso! Verifique seu e-mail.")
 
-            codigo = st.text_input(
-                "Código de Verificação", key="codigo_cadastro")
-            if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                # Chama função que faz login automático e redireciona para o chat
-                verificar_codigo_cadastro(st.session_state.temp_email, codigo)
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"Erro ao reenviar e-mail de verificação: {e}")
 
-    # Bloco de verificação de código — fluxo de LOGIN (conta não verificada)
-    if aguardando_verificacao and st.session_state.get("verificacao_pos_login"):
-        with st.sidebar:
-            st.warning(
-                "Sua conta ainda não foi verificada. "
-                "Por favor, insira o código de verificação enviado para seu e-mail."
-            )
-            codigo = st.text_input(
-                "Código de Verificação", key="codigo_login")
-            if st.button("Confirmar Código", key="confirmar_codigo_login"):
-                verificar_codigo(st.session_state.temp_email, codigo)
+                    finally:
+                        session.close()
+
+                codigo = st.text_input(
+                    "Código de Verificação", key="codigo_cadastro")
+                if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
+                    # fix: login automático após confirmação de código no fluxo de cadastro
+                    session = Session()
+                    user_para_login = None
+                    try:
+                        user = session.query(UserAnalise).filter_by(
+                            email=st.session_state.temp_email
+                        ).first()
+
+                        if not user:
+                            st.error("Usuário não encontrado.")
+                        elif codigo != user.verification_code:
+                            st.error("Código de verificação inválido.")
+                        else:
+                            user.is_verified = True
+                            user.verification_code = None
+                            session.commit()
+                            user_para_login = user.email
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"Erro ao confirmar código: {e}")
+                    finally:
+                        session.close()
+
+                    # fix: faz login automático fora do bloco de sessão
+                    if user_para_login:
+                        session3 = Session()
+                        try:
+                            user_fresh = session3.query(UserAnalise).filter_by(
+                                email=user_para_login
+                            ).first()
+                            st.session_state.user = user_fresh
+                            st.session_state.logged_in = True
+                            st.session_state.codigo_confirmado = True
+                            st.session_state.temp_email = None
+                        finally:
+                            session3.close()
+                        st.rerun()
 
     if "verificar_pagamento" not in st.session_state:
         st.session_state.verificar_pagamento = False
@@ -668,8 +645,6 @@ def main():
                 "logged_in",
                 "codigo_confirmado",
                 "temp_email",
-                "verificacao_pos_login",
-                "cadastro_realizado",
                 "name",
                 "email",
                 "image",
