@@ -1,5 +1,5 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.3
+# analista.py  —  Oráculo Analista  v2.4
 # ============================================================
 import io
 import json
@@ -65,7 +65,7 @@ CSS_GLOBAL = """
 
 
 # =========================
-# Truncate local seguro (converte None/qualquer tipo para str)
+# Truncate local seguro
 # =========================
 def _truncate(text, limite: int = 10_000) -> str:
     if text is None:
@@ -139,7 +139,7 @@ def obter_avatar_usuario() -> str:
 
 
 # =========================
-# Leitores de arquivo (todos com try/except e retorno str garantido)
+# Leitores de arquivo
 # =========================
 def read_xlsx(file) -> dict:
     text = ""
@@ -234,7 +234,6 @@ def processar_arquivo(file) -> dict:
             text = "Tipo de arquivo não suportado."
         res = {"text": text, "pages": None, "type": "unknown"}
     res["name"] = file.name
-    # Garante string em qualquer caso
     if not isinstance(res.get("text"), str):
         res["text"] = str(res.get("text", ""))
     return res
@@ -316,26 +315,15 @@ def secao_upload_e_leitura() -> None:
         st.session_state["arquivos_processados"] = processados
         st.session_state["full_content"]         = obter_resumo_arquivos(processados)
 
-        nomes = ", ".join(a["name"] for a in processados)
-        st.success(
-            f"✅ Leitura concluída! {len(processados)} documento(s) "
-            f"compreendido(s): **{nomes}**"
-        )
-
+        # Apenas mensagem no chat — sem st.success e sem prévia
         msg_leitura = (
-            f"📚 Li e analisei {len(processados)} documento(s): **{nomes}**.\n\n"
+            f"📚 Li e analisei {len(processados)} documento(s).\n\n"
             "Agora você pode me fazer perguntas sobre o conteúdo. Como posso ajudar? 💡"
         )
         st.session_state.setdefault("messages", []).append(
             {"role": "assistant", "content": msg_leitura}
         )
-
-        st.subheader("📄 Prévia dos Documentos Lidos:")
-        for arq in processados:
-            titulo = arq.get("name", "Arquivo")
-            if arq.get("pages"):
-                titulo += f" | {arq['pages']} páginas"
-            st.text_area(titulo, _truncate(arq.get("text", ""), 3000), height=180)
+        st.rerun()
 
 
 # =========================
