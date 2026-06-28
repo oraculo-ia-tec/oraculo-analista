@@ -12,16 +12,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from src.models.base import Base, engine
-from src.auth.ui import interface
-from src.styles.theme import apply_global_theme
-from src.admin.access import tem_acesso_admin
-from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios
-from analista import oraculo_analista
-from pagamentos import render_painel_pagamentos
-from notification import Notificador  # noqa
+from src.models.base import Base, engine          # noqa: E402
+from src.models.migrate import rodar_migrations   # noqa: E402
+from src.auth.ui import interface                  # noqa: E402
+from src.styles.theme import apply_global_theme    # noqa: E402
+from src.admin.access import tem_acesso_admin      # noqa: E402
+from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios  # noqa: E402
+from analista import oraculo_analista              # noqa: E402
+from pagamentos import render_painel_pagamentos    # noqa: E402
+from notification import Notificador               # noqa: E402
 
+# 1º cria tabelas novas
 Base.metadata.create_all(engine)
+# 2º adiciona colunas que não existiam no banco já criado
+rodar_migrations()
+
 apply_global_theme()
 
 
@@ -41,7 +46,6 @@ def _sidebar_usuario_logado(user) -> str:
     st.sidebar.write(f"📱 {user.whatsapp}")
     st.sidebar.divider()
 
-    # Menu dinâmico por cargo
     paginas = ["🤖 Oráculo Analista", "⚙️ Configuração"]
     if tem_acesso_admin(user):
         paginas.append("📊 Dashboard Admin")
