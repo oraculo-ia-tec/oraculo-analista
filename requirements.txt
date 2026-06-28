@@ -1,12 +1,8 @@
 # === Oráculo Analista — requirements.txt ===
-# bump: 2026-06-09-v3
+# bump: 2026-06-28
 
 # Auth
 bcrypt==4.0.1
-
-# Config
-python-decouple==3.8
-python-dotenv==1.0.1
 
 # Streamlit
 streamlit==1.43.2
@@ -33,9 +29,3 @@ groq==0.22.0
 
 # HTTP
 requests==2.32.3
-
-# Gmail API
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2

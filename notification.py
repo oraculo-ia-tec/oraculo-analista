@@ -1,4 +1,3 @@
-import os
 import smtplib
 import logging
 from email.mime.multipart import MIMEMultipart
@@ -10,172 +9,80 @@ logging.basicConfig(level=logging.INFO)
 
 
 class Notificador:
+    """
+    Envia e-mails via SMTP (Hostinger ou qualquer servidor SMTP).
+    Credenciais lidas exclusivamente via st.secrets["email"].
+    """
+
     def __init__(self):
-        email_secrets = st.secrets.get("email", {})
+        email_cfg = st.secrets.get("email", {})
 
-        self.host = str(email_secrets.get("EMAIL_HOST") or os.getenv("EMAIL_HOST", "smtp.hostinger.com"))
-        self.port = int(email_secrets.get("EMAIL_PORT") or os.getenv("EMAIL_PORT", 465))
-        self.username = str(email_secrets.get("EMAIL_USERNAME") or os.getenv("EMAIL_USERNAME", ""))
-        self.password = str(email_secrets.get("EMAIL_PASSWORD") or os.getenv("EMAIL_PASSWORD", ""))
-        self.remetente = str(email_secrets.get("EMAIL_REMETENTE") or os.getenv("EMAIL_REMETENTE", self.username))
-
-        # Detecta modo pela porta - ignora EMAIL_USE_SSL/TLS para evitar conflito
-        # Porta 465 = SSL direto | Porta 587 ou 25 = STARTTLS
-        self.use_ssl = self.port == 465
+        self.host       = email_cfg.get("EMAIL_HOST", "")
+        self.port       = int(email_cfg.get("EMAIL_PORT", 587))
+        self.username   = email_cfg.get("EMAIL_USERNAME", "")
+        self.password   = email_cfg.get("EMAIL_PASSWORD", "")
+        self.use_tls    = bool(email_cfg.get("EMAIL_USE_TLS", True))
+        self.use_ssl    = bool(email_cfg.get("EMAIL_USE_SSL", False))
+        self.remetente  = email_cfg.get("EMAIL_REMETENTE", self.username)
 
     def _validate_settings(self) -> None:
         faltantes = [
             nome for nome, valor in {
-                "EMAIL_HOST": self.host,
+                "EMAIL_HOST":     self.host,
                 "EMAIL_USERNAME": self.username,
                 "EMAIL_PASSWORD": self.password,
             }.items() if not valor
         ]
         if faltantes:
             raise RuntimeError(
-                f"Variaveis obrigatorias ausentes para envio de e-mail: {', '.join(faltantes)}"
+                f"Variáveis obrigatórias ausentes para SMTP: {', '.join(faltantes)}"
             )
 
-    def enviar_email(self, destino: str, assunto: str, mensagem: str) -> bool:
-        """Envia e-mail via SMTP Hostinger com deteccao automatica SSL/TLS."""
+    def enviar_email(self, destino: str, assunto: str, mensagem: str) -> dict:
+        """
+        Envia um e-mail HTML via SMTP.
+
+        Args:
+            destino:  Endereço de destino.
+            assunto:  Assunto do e-mail.
+            mensagem: Corpo em HTML.
+
+        Returns:
+            dict com 'status' e 'destino'.
+        """
         self._validate_settings()
 
         mime = MIMEMultipart("alternative")
-        mime["To"] = destino
-        mime["From"] = self.remetente
+        mime["From"]    = self.remetente
+        mime["To"]      = destino
         mime["Subject"] = assunto
         mime.attach(MIMEText(mensagem, "html", "utf-8"))
 
         try:
             if self.use_ssl:
-                # Porta 465: SSL desde o inicio da conexao
-                with smtplib.SMTP_SSL(self.host, self.port) as server:
-                    server.login(self.username, self.password)
-                    server.sendmail(self.remetente, destino, mime.as_string())
+                # Porta 465 — SSL direto
+                with smtplib.SMTP_SSL(self.host, self.port) as smtp:
+                    smtp.login(self.username, self.password)
+                    smtp.sendmail(self.remetente, destino, mime.as_string())
             else:
-                # Porta 587: conexao plaintext + upgrade TLS via STARTTLS
-                with smtplib.SMTP(self.host, self.port, timeout=30) as server:
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                    server.login(self.username, self.password)
-                    server.sendmail(self.remetente, destino, mime.as_string())
+                # Porta 587 — STARTTLS (padrão Hostinger)
+                with smtplib.SMTP(self.host, self.port) as smtp:
+                    if self.use_tls:
+                        smtp.starttls()
+                    smtp.login(self.username, self.password)
+                    smtp.sendmail(self.remetente, destino, mime.as_string())
 
-            logging.info(f"E-mail enviado com sucesso para {destino} via porta {self.port}.")
-            return True
+            logging.info(f"E-mail enviado com sucesso para {destino}.")
+            return {"status": "ok", "destino": destino}
 
         except smtplib.SMTPAuthenticationError as e:
-            logging.exception(f"Erro de autenticacao SMTP: {e}")
-            raise RuntimeError(
-                "Falha na autenticacao SMTP. Verifique EMAIL_USERNAME e EMAIL_PASSWORD nos Secrets."
-            ) from e
+            logging.exception("Falha de autenticação SMTP.")
+            raise RuntimeError("Usuário ou senha SMTP inválidos.") from e
 
         except smtplib.SMTPException as e:
-            logging.exception(f"Erro SMTP ao enviar para {destino}: {e}")
-            raise RuntimeError(f"Erro SMTP: {e}") from e
+            logging.exception(f"Erro SMTP ao enviar para {destino}.")
+            raise RuntimeError(f"Falha no envio via SMTP: {e}") from e
 
         except Exception as e:
-            logging.exception(f"Erro inesperado ao enviar e-mail para {destino}: {e}")
-            raise RuntimeError(f"Falha no envio de e-mail: {e}") from e
-
-    # ------------------------------------------------------------------
-    # Metodos de notificacao especificos
-    # ------------------------------------------------------------------
-
-    def enviar_recuperacao_senha(self, nome: str, email: str, link: str) -> bool:
-        assunto = "Redefinicao de senha - Oraculo Analista"
-        mensagem = f"""
-        <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:32px;">
-          <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;
-                      padding:40px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-            <h2 style="color:#7c3aed;">Redefinicao de Senha</h2>
-            <p style="color:#374151;">Ola, <strong>{nome}</strong>!</p>
-            <p style="color:#374151;">
-              Clique no botao abaixo para criar uma nova senha no Oraculo Analista:
-            </p>
-            <div style="text-align:center;margin:32px 0;">
-              <a href="{link}" style="background:#7c3aed;color:#fff;text-decoration:none;
-                        padding:14px 32px;border-radius:8px;font-size:16px;
-                        font-weight:600;display:inline-block;">Criar Nova Senha</a>
-            </div>
-            <p style="color:#6b7280;font-size:13px;">
-              Ou copie este link no navegador:<br>
-              <a href="{link}" style="color:#7c3aed;word-break:break-all;">{link}</a>
-            </p>
-            <p style="color:#6b7280;font-size:13px;margin-top:16px;">
-              Este link expira em <strong>60 minutos</strong>.
-              Se voce nao solicitou, ignore este e-mail.
-            </p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-            <p style="color:#9ca3af;font-size:12px;text-align:center;">Oraculo Analista - Oraculos AI</p>
-          </div>
-        </body></html>
-        """
-        return self.enviar_email(destino=email, assunto=assunto, mensagem=mensagem)
-
-    def enviar_senha_alterada(self, nome: str, email: str) -> bool:
-        assunto = "Senha alterada com sucesso - Oraculo Analista"
-        mensagem = f"""
-        <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:32px;">
-          <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;
-                      padding:40px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-            <h2 style="color:#059669;">Senha Alterada com Sucesso</h2>
-            <p style="color:#374151;">Ola, <strong>{nome}</strong>!</p>
-            <p style="color:#374151;">
-              Sua senha no Oraculo Analista foi redefinida com sucesso.
-              Voce recebera em seguida um codigo de verificacao para acessar o sistema.
-            </p>
-            <p style="color:#6b7280;font-size:13px;">
-              Se voce nao realizou esta alteracao, entre em contato com o suporte imediatamente.
-            </p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-            <p style="color:#9ca3af;font-size:12px;text-align:center;">Oraculo Analista - Oraculos AI</p>
-          </div>
-        </body></html>
-        """
-        return self.enviar_email(destino=email, assunto=assunto, mensagem=mensagem)
-
-    def enviar_verificacao(self, nome: str, email: str, codigo: str) -> bool:
-        assunto = "Codigo de verificacao - Oraculo Analista"
-        mensagem = f"""
-        <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:32px;">
-          <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;
-                      padding:40px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-            <h2 style="color:#7c3aed;">Codigo de Verificacao</h2>
-            <p style="color:#374151;">Ola, <strong>{nome}</strong>!</p>
-            <p style="color:#374151;">Use o codigo abaixo para confirmar seu acesso ao Oraculo Analista:</p>
-            <div style="text-align:center;margin:32px 0;">
-              <span style="font-size:40px;font-weight:800;letter-spacing:12px;
-                           color:#7c3aed;background:#f3f0ff;padding:16px 32px;
-                           border-radius:12px;display:inline-block;">{codigo}</span>
-            </div>
-            <p style="color:#6b7280;font-size:13px;">Nunca compartilhe este codigo com ninguem.</p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-            <p style="color:#9ca3af;font-size:12px;text-align:center;">Oraculo Analista - Oraculos AI</p>
-          </div>
-        </body></html>
-        """
-        return self.enviar_email(destino=email, assunto=assunto, mensagem=mensagem)
-
-    def enviar_boas_vindas(self, nome: str, email: str, whatsapp: str) -> bool:
-        assunto = "Bem-vindo ao Oraculo Analista!"
-        mensagem = f"""
-        <html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:32px;">
-          <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;
-                      padding:40px;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-            <h2 style="color:#7c3aed;">Bem-vindo(a)!</h2>
-            <p style="color:#374151;">Ola, <strong>{nome}</strong>!</p>
-            <p style="color:#374151;">
-              Sua conta no Oraculo Analista foi criada com sucesso.
-              Voce recebera em instantes um codigo de verificacao para ativar seu acesso.
-            </p>
-            <p style="color:#374151;">
-              WhatsApp: <strong>{whatsapp}</strong><br>
-              E-mail: <strong>{email}</strong>
-            </p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-            <p style="color:#9ca3af;font-size:12px;text-align:center;">Oraculo Analista - Oraculos AI</p>
-          </div>
-        </body></html>
-        """
-        return self.enviar_email(destino=email, assunto=assunto, mensagem=mensagem)
+            logging.exception(f"Erro inesperado ao enviar e-mail para {destino}.")
+            raise RuntimeError(f"Erro desconhecido no envio de e-mail: {e}") from e
