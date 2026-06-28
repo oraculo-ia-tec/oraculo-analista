@@ -1,148 +1,105 @@
+# ============================================================
+# pagamentos.py — Oráculo Analista
+# Painel Streamlit de pagamentos (chamado via app.py ou standalone)
+# NUNCA chame st.set_page_config() aqui — já feito em app.py
+# ============================================================
+from __future__ import annotations
+
 import streamlit as st
-import pandas as pd
-import requests
-from sqlalchemy import create_engine, update
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
-from decouple import config
-import datetime
-from notification import Notificador, WhatsAppSimulado
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean, Date
-from sqlalchemy.orm import relationship
 
-Base = declarative_base()
-# Criando as tabelas no banco
-Base.metadata.create_all(engine)
+from src.payments.service import AsaasService
+from src.payments.plans import PLANOS, label_preco
+
+_STATUS_OPTS = ["PENDING", "RECEIVED", "CONFIRMED", "OVERDUE"]
+_svc = AsaasService()
 
 
-class Cobranca(Base):
-    __tablename__ = 'cobrancas'
+def render_painel_pagamentos() -> None:
+    """Renderiza o painel de pagamentos dentro do app."""
+    st.title("💳 Painel de Pagamentos")
+    st.divider()
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String, ForeignKey('user_analista.id'), nullable=False)
-    plano_id = Column(Integer, ForeignKey('planos.id'), nullable=False)
-    valor = Column(Float, nullable=False)
-    status = Column(String(20), nullable=False)  # PENDING, PAID, CANCELLED
-    data_criacao = Column(DateTime, nullable=False)
-    due_date = Column(DateTime, nullable=False)
-    descricao = Column(Text, nullable=True)
-    payment_link = Column(String, nullable=True)
+    # ── Listagem ─────────────────────────────────────────
+    st.subheader("📊 Cobranças")
+    status_sel = st.selectbox(
+        "Filtrar por status:",
+        options=_STATUS_OPTS,
+        format_func=AsaasService.status_pt,
+        key="pay_status_filter",
+    )
 
-    # Relacionamento com pagamento e usuário
-    pagamentos = relationship("Pagamento", back_populates="cobranca")
-    usuario = relationship("UserAnalista", back_populates="cobrancas")
+    if st.button("🔄 Atualizar lista", key="pay_refresh"):
+        with st.spinner("Buscando cobranças..."):
+            try:
+                pagamentos = _svc.listar_pagamentos(status_sel)
+                if not pagamentos:
+                    st.warning("Nenhuma cobrança encontrada.")
+                else:
+                    import pandas as pd
+                    df = pd.DataFrame(pagamentos)
+                    colunas = [c for c in ["customer", "value", "billingType", "status", "dueDate", "id"] if c in df.columns]
+                    df = df[colunas].rename(columns={
+                        "customer":    "Cliente",
+                        "value":       "Valor",
+                        "billingType": "Tipo",
+                        "status":      "Status",
+                        "dueDate":     "Vencimento",
+                        "id":          "ID",
+                    })
+                    df["Status"] = df["Status"].apply(AsaasService.status_pt)
+                    st.dataframe(df, use_container_width=True)
+            except Exception as e:
+                st.error(f"Erro ao buscar cobranças: {e}")
 
+    st.divider()
 
-class Pagamento(Base):
-    __tablename__ = 'pagamentos'
+    # ── Verificação manual ──────────────────────────────
+    st.subheader("🔍 Verificar pagamento manual")
+    payment_id = st.text_input("ID do pagamento Asaas:", key="pay_manual_id")
+    if st.button("Verificar", key="pay_manual_btn") and payment_id:
+        with st.spinner("Verificando..."):
+            try:
+                dados = _svc.verificar_pagamento(payment_id)
+                status_en = dados.get("status", "")
+                st.info(f"Status: **{AsaasService.status_pt(status_en)}**")
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    cobranca_id = Column(Integer, ForeignKey('cobrancas.id'), nullable=False)
-    valor_pago = Column(Float, nullable=False)
-    status = Column(String(20), nullable=False)  # PENDING, PAID, REFUNDED
-    data_pago = Column(DateTime, nullable=True)
-    payment_id = Column(String, nullable=True)  # ID da API Asaas
-    descricao = Column(Text, nullable=True)
+                if status_en in ("RECEIVED", "CONFIRMED"):
+                    email_cliente = dados.get("customer", "")
+                    plano_ativo   = st.selectbox(
+                        "Plano a ativar:",
+                        options=list(PLANOS.keys()),
+                        format_func=label_preco,
+                        key="pay_plano_ativar",
+                    )
+                    if st.button("✅ Ativar plano", key="pay_ativar_btn"):
+                        ok = _svc.ativar_plano(email=email_cliente, plano=plano_ativo)
+                        if ok:
+                            st.success(f"Plano **{label_preco(plano_ativo)}** ativado com sucesso!")
+                        else:
+                            st.error("Usuário não encontrado no banco.")
+            except Exception as e:
+                st.error(f"Erro ao verificar: {e}")
 
-    # Relacionamento com cobrança
-    cobranca = relationship("Cobranca", back_populates="pagamentos")
+    st.divider()
 
-
-st.set_page_config(page_title="Pagamentos - Oráculo Analista", layout="wide")
-
-st.title("💳 Painel de Pagamentos")
-
-STATUS_OPTIONS = ["PENDENTE", "RECEBIDO", "CONFIRMADO", "VENCIDO"]
-STATUS_TRANSLATE = {
-    "PENDING": "PENDENTE",
-    "RECEIVED": "RECEBIDO",
-    "CONFIRMED": "CONFIRMADO",
-    "OVERDUE": "VENCIDO"
-}
-
-# Configurações do notificador
-notificador = Notificador()
-
-reverse_translate = {v: k for k, v in STATUS_TRANSLATE.items()}
-status = st.selectbox("Filtrar pagamentos por status:", options=STATUS_OPTIONS, index=0)
-
-with st.spinner("Carregando dados..."):
-    try:
-        api_status = reverse_translate[status]
-        response = requests.get(f"http://localhost:8000/listar-pagamentos?status={api_status}")
-        pagamentos = response.json().get("data", [])
-
-        if not pagamentos:
-            st.warning("Nenhum pagamento encontrado com esse status.")
-        else:
-            df = pd.DataFrame(pagamentos)
-            colunas_desejadas = ["customer", "value", "billingType", "status", "dueDate", "id"]
-            df = df[colunas_desejadas]
-            df = df.rename(columns={
-                "customer": "Cliente",
-                "value": "Valor",
-                "billingType": "Tipo",
-                "status": "Status",
-                "dueDate": "Vencimento",
-                "id": "ID do Pagamento"
-            })
-            df["Status"] = df["Status"].map(STATUS_TRANSLATE)
-            st.dataframe(df, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Erro ao buscar pagamentos: {e}")
-
-st.markdown("---")
-st.subheader("🔍 Verificar pagamento manualmente")
-payment_id = st.text_input("Informe o ID do pagamento para verificar:")
-
-# Configuração do banco para atualização
-DATABASE_URL = config("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-Base = declarative_base()
-
-class UserAnalise(Base):
-    __tablename__ = "user_analise"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    whatsapp = Column(String(20), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    profile_image_path = Column(String(500), nullable=True)
-    verification_code = Column(String(6), nullable=True)
-    is_verified = Column(Boolean, default=False)
-    plano = Column(String(20), default="free")
-    pagamento_verificado = Column(Boolean, default=False)
-    upgrade_solicitado = Column(String(20), nullable=True)
-    pagamento_confirmado = Column(Boolean, default=False)
-    acesso_autorizado = Column(Boolean, default=False)
-    data_vencimento = Column(Date, nullable=True)
-
-if st.button("Verificar Pagamento"):
-    try:
-        resposta = requests.post("http://localhost:8000/verificar-pagamento", json={"payment_id": payment_id})
-        dados = resposta.json()
-        status_pagamento = dados.get("status", "indefinido")
-        cliente_id = dados.get("customer", None)
-
-        status_br = STATUS_TRANSLATE.get(status_pagamento, status_pagamento)
-        st.success(f"Status do pagamento {payment_id}: {status_br}")
-
-        if status_pagamento == "RECEIVED" and cliente_id:
-            session = Session()
-            usuario = session.query(UserAnalise).filter_by(email=cliente_id).first()
-            if usuario:
-                usuario.pagamento_confirmado = True
-                usuario.acesso_autorizado = True
-                usuario.plano = usuario.upgrade_solicitado
-                dias = 30 if usuario.plano == "mensal" else 90 if usuario.plano == "trimestral" else 365
-                usuario.data_vencimento = datetime.date.today() + datetime.timedelta(days=dias)
-                session.commit()
-                st.success("Status do usuário atualizado no banco de dados.")
-            else:
-                st.warning("Usuário com e-mail correspondente ao cliente não encontrado.")
-            session.close()
-
-    except Exception as e:
-        st.error(f"Erro ao verificar pagamento: {e}")
+    # ── Criar cobrança manual ────────────────────────────
+    with st.expander("➕ Criar cobrança PIX manual", expanded=False):
+        c1, c2 = st.columns(2)
+        cliente_id = c1.text_input("ID do cliente Asaas:", key="pay_cli_id")
+        plano_novo = c2.selectbox(
+            "Plano:",
+            options=list(PLANOS.keys()),
+            format_func=label_preco,
+            key="pay_plano_novo",
+        )
+        if st.button("Gerar cobrança PIX", key="pay_gerar_btn") and cliente_id:
+            with st.spinner("Criando cobrança..."):
+                try:
+                    res = _svc.criar_cobranca_pix(cliente_id, plano_novo)
+                    st.success("Cobrança criada!")
+                    link = res.get("invoiceUrl") or res.get("bankSlipUrl", "")
+                    if link:
+                        st.markdown(f"[🔗 Link de pagamento]({link})")
+                    st.json(res)
+                except Exception as e:
+                    st.error(f"Erro: {e}")
