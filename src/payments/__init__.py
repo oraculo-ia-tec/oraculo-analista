@@ -1,8 +1,8 @@
-from .models import Cobranca, Pagamento, UserAnalisePayment
+from .models import Cobranca, Pagamento
 from .service import AsaasService
 from .plans import PLANOS, calcular_vencimento
 
 __all__ = [
-    "Cobranca", "Pagamento", "UserAnalisePayment",
+    "Cobranca", "Pagamento",
     "AsaasService", "PLANOS", "calcular_vencimento",
 ]

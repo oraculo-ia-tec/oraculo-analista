@@ -2,7 +2,7 @@
 # src/models/user.py
 # Modelos ORM do Oráculo Analista
 # ============================================================
-from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, Column, Date, ForeignKey, Integer, String
 
 from .base import Base
 
@@ -40,15 +40,24 @@ class UserAdmin(Base):
 
 class UserAnalise(Base):
     __tablename__      = "user_analise"
+
+    # ── campos originais ───────────────────────────────
     id                 = Column(Integer, primary_key=True)
     name               = Column(String(255), nullable=False)
-    whatsapp           = Column(String(20), nullable=False)
+    whatsapp           = Column(String(20),  nullable=False)
     email              = Column(String(255), unique=True, nullable=False)
     password           = Column(String(255), nullable=False)
     profile_image_path = Column(String(500), nullable=True)
-    verification_code  = Column(String(6), nullable=True)
-    is_verified        = Column(Boolean, default=False)
-    cargo_id           = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
+    verification_code  = Column(String(6),   nullable=True)
+    is_verified        = Column(Boolean,     default=False)
+    cargo_id           = Column(BigInteger,  ForeignKey("cargo.id"), nullable=False)
+
+    # ── campos de pagamento (nullable para retrocompatibilidade) ──
+    plano                = Column(String(20),  default="free",  nullable=True)
+    pagamento_confirmado = Column(Boolean,     default=False,   nullable=True)
+    acesso_autorizado    = Column(Boolean,     default=False,   nullable=True)
+    upgrade_solicitado   = Column(String(20),  nullable=True)
+    data_vencimento      = Column(Date,        nullable=True)
 
 
 class Enquete(Base):
