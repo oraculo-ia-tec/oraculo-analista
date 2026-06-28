@@ -1,45 +1,37 @@
-from decouple import config
+import streamlit as st
 
-# URL base da API do Stripe
-URL_BASE = "https://api.stripe.com/v1"
-BASE_URL_ASAAS = "https://api-sandbox.asaas.com/v3"
+# ============================================================
+# SKILL DE SEGURANÇA — Todas as credenciais via st.secrets
+# Configure os valores no painel do Streamlit Cloud:
+# App Settings > Secrets
+# ============================================================
 
-# Chave da API do Banco de Dados
-DATABASE_URL = config("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("A variável de ambiente DATABASE_URL não está definida. Verifique o arquivo .env.")
+# --- DATABASE ---
+DATABASE_URL = st.secrets["default"]["DATABASE_URL"]
+APP_BASE_URL = st.secrets["default"]["APP_BASE_URL"]
 
-# Chave da API do Stripe
-API_KEY_STRIPE = config("API_KEY_STRIPE")
-if not API_KEY_STRIPE:
-    raise ValueError("A variável de ambiente API_KEY_STRIPE não está definida. Verifique o arquivo .env.")
+# --- GROQ AI ---
+GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
+GROQ_MODEL   = st.secrets["groq"]["GROQ_MODEL"]
 
-# Chave da API do REPLICATE
-REPLICATE_API_TOKEN = config("REPLICATE_API_TOKEN")  # Altere aqui para usar o nome correto
-if not REPLICATE_API_TOKEN:
-    raise ValueError("A variável de ambiente REPLICATE_API_TOKEN não está definida. Verifique o arquivo .env.")
+# --- EMAIL ---
+EMAIL_HOST      = st.secrets["email"]["EMAIL_HOST"]
+EMAIL_PORT      = st.secrets["email"]["EMAIL_PORT"]
+EMAIL_USERNAME  = st.secrets["email"]["EMAIL_USERNAME"]
+EMAIL_PASSWORD  = st.secrets["email"]["EMAIL_PASSWORD"]
+EMAIL_USE_TLS   = st.secrets["email"]["EMAIL_USE_TLS"]
+EMAIL_USE_SSL   = st.secrets["email"]["EMAIL_USE_SSL"]
+EMAIL_REMETENTE = st.secrets["email"]["EMAIL_REMETENTE"]
 
-# Chave da API do ASAAS
-ASAAS_API_KEY = config("ASAAS_API_KEY")
-if not ASAAS_API_KEY:
-    raise ValueError("A variável de ambiente ASAAS_API_KEY não está definida. Verifique o arquivo .env.")
+# --- ASAAS (Pagamentos) ---
+# Adicione ao Streamlit Secrets: [asaas] ASAAS_API_KEY = "sua_chave"
+ASAAS_API_KEY = st.secrets.get("asaas", {}).get("ASAAS_API_KEY", "")
 
-# Chave do Webhook do Stripe
-STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET")
-if not STRIPE_WEBHOOK_SECRET:
-    raise ValueError("A variável de ambiente STRIPE_WEBHOOK_SECRET não está definida. Verifique o arquivo .env.")
+# --- WEBHOOKS ---
+# Adicione ao Streamlit Secrets: [webhooks] WEBHOOK_CADASTRO_ANALISTA = "url"
+WEBHOOK_CADASTRO_ANALISTA = st.secrets.get("webhooks", {}).get("WEBHOOK_CADASTRO_ANALISTA", "")
+WEBHOOK_TESTE             = st.secrets.get("webhooks", {}).get("WEBHOOK_TESTE", "")
 
-# Chave do Webhook do MAKE TESTE
-WEBHOOK_TESTE = config("WEBHOOK_TESTE")
-if not WEBHOOK_TESTE:
-    raise ValueError("A variável de ambiente WEBHOOK_TESTE não está definida. Verifique o arquivo .env.")
-
-# Chave do Webhook do MAKE CADASTRO
-WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA")
-if not WEBHOOK_CADASTRO_ANALISTA:
-    raise ValueError("A variável de ambiente WEBHOOK_CADASTRO_ANALISTA não está definida. Verifique o arquivo .env.")
-
-# URL da API FastAPI
-FASTAPI_URL = config("FASTAPI_URL")
-if not FASTAPI_URL:
-    raise ValueError("A variável de ambiente FASTAPI_URL não está definida. Verifique o arquivo .env.")
+# --- FASTAPI ---
+# Adicione ao Streamlit Secrets: [fastapi] FASTAPI_URL = "url"
+FASTAPI_URL = st.secrets.get("fastapi", {}).get("FASTAPI_URL", "")

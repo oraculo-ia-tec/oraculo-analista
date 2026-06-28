@@ -1,63 +1,51 @@
-# Python
+# Pastas e arquivos gerados automaticamente
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-*.egg
-
-# Ambientes virtuais
-venv/
-env/
-.venv/
-.env/
-
-# ⚠️ CREDENCIAIS — NUNCA commitar estes arquivos
-.env
-secrets.toml
-tokens.json
-credentials.json
-*.pem
-*.key
-
-# Banco de dados (contém dados reais de usuários)
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs e resultados de debug
-resultado_envio.txt
+*.pyc
 *.log
 
-# Uploads temporários de usuários
-uploads/
-tmp/
-temp/
+# Ambiente virtual
+venv/
+ENV/
 
-# Streamlit
+# Dependências locais
+/node_modules
+/.vscode
+
+# Variáveis de ambiente e credenciais — NUNCA subir ao repositório
+.env
+.env.*
+config.yaml
+config_handler.py
+
+# Streamlit secrets com valores reais (use o painel do Streamlit Cloud)
 .streamlit/secrets.toml
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
+# Tokens OAuth e credenciais de APIs
+tokens.json
+credentials.json
+*.token
+*.key
 
-# macOS
-.DS_Store
+# Banco de dados local
+*.db
+*.sqlite3
+db.sqlite3
+bd_oraculo_analista/
 
-# Windows
-Thumbs.db
-ehthumbs.db
+# Arquivos de resultado e exportação
+resultado_envio.txt
+*.xlsx
+*.html
 
-# Jupyter
-.ipynb_checkpoints/
+# Libs e scripts locais
+Lib/
+Scripts/
+0.26.0
+0.26.0'
 
-# Cobertura de testes
-htmlcov/
-.coverage
-.pytest_cache/
+# Projetos relacionados não incluídos neste repo
+oraculo-coach
+
+# Arquivos de teste e perfis locais
+teste.py
+user_profiles/
