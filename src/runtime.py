@@ -1,7 +1,6 @@
 # ============================================================
 # src/runtime.py
 # Runtime principal — gerencia o loop de sessão agêntica
-# Equivalente ao runtime.py do Claude Code
 # ============================================================
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from .constants.settings import (
     APP_NAME,
     DEFAULT_MODEL,
     MAX_TOKENS_FREE_PLAN,
-    MAX_TOKENS_PRO_PLAN,
     MAX_CONTEXT_CHARS,
 )
 from .query_engine import QueryEngine
@@ -23,7 +21,6 @@ from .tools.file_tools import FileReadTool
 from .tools.search_tool import WebSearchTool
 from .tools.export_tool import ExportTool
 from .utils.helpers import truncate, generate_id, now_iso
-from .utils.secrets import get_secret
 
 
 class Runtime:
@@ -58,8 +55,15 @@ class Runtime:
         self.tools = ToolRegistry()
         self._register_default_tools()
 
-        # Leitura da chave com fallback: st.secrets[groq] → st.secrets → os.environ
-        key = api_key or get_secret("GROQ_API_KEY", section="groq")
+        # Prioridade: api_key passado → st.secrets → string vazia
+        if api_key:
+            key = api_key
+        else:
+            try:
+                key = st.secrets["groq"]["GROQ_API_KEY"]
+            except Exception:
+                key = ""
+
         self.engine = QueryEngine(
             api_key=key,
             model=model,
@@ -125,9 +129,9 @@ class Runtime:
         )
 
     def _build_system_prompt(self, file_context: str) -> str:
-        nome   = st.session_state.get("primeiro_nome", "Usuário")
-        tools  = self.tools.describe_for_prompt()
-        ctx    = truncate(file_context, MAX_CONTEXT_CHARS)
+        nome  = st.session_state.get("primeiro_nome", "Usuário")
+        tools = self.tools.describe_for_prompt()
+        ctx   = truncate(file_context, MAX_CONTEXT_CHARS)
 
         return f"""Você é o {APP_NAME}, doutor e especialista em análise de dados, \
 desenvolvido pela equipe Oráculo IA Tec.
