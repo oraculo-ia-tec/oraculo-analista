@@ -1,12 +1,10 @@
 # ============================================================
 # app.py — Oráculo Analista
-# Router principal — orquestra páginas e sessão
-# st.set_page_config() DEVE ser a primeira chamada Streamlit
+# Router principal — set_page_config DEVE ser o primeiro comando
 # ============================================================
 import os
 import streamlit as st
 
-# ⚠️ set_page_config precisa ser a PRIMEIRA chamada — antes de qualquer import de página
 st.set_page_config(
     page_title="Oráculo Analista",
     page_icon="🤖",
@@ -14,20 +12,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Imports após set_page_config
-from src.models.base import Base, engine          # noqa: E402
-from src.auth.ui import interface                  # noqa: E402
-from src.styles.theme import apply_global_theme    # noqa: E402
-from src.admin.access import tem_acesso_admin      # noqa: E402
-from analista import oraculo_analista              # noqa: E402
-from notification import Notificador               # noqa: E402  garante import no deploy
+from src.models.base import Base, engine
+from src.auth.ui import interface
+from src.styles.theme import apply_global_theme
+from src.admin.access import tem_acesso_admin
+from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios
+from analista import oraculo_analista
+from pagamentos import render_painel_pagamentos
+from notification import Notificador  # noqa
 
 Base.metadata.create_all(engine)
 apply_global_theme()
 
 
 def _sidebar_usuario_logado(user) -> str:
-    """Renderiza o sidebar do usuário logado. Retorna a página selecionada."""
     st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
 
     avatar = (
@@ -43,9 +41,13 @@ def _sidebar_usuario_logado(user) -> str:
     st.sidebar.write(f"📱 {user.whatsapp}")
     st.sidebar.divider()
 
-    paginas = ["🤖 Oráculo Analista"]
+    # Menu dinâmico por cargo
+    paginas = ["🤖 Oráculo Analista", "⚙️ Configuração"]
     if tem_acesso_admin(user):
         paginas.append("📊 Dashboard Admin")
+        paginas.append("💰 Financeiro")
+    if tem_acesso_usuarios(user):
+        paginas.append("👥 Usuários")
 
     pagina = st.sidebar.radio("Navegar para:", paginas, key="nav_pagina")
 
@@ -63,13 +65,11 @@ def _sidebar_usuario_logado(user) -> str:
 def main() -> None:
     if not st.session_state.get("logged_in"):
         interface()
-        # Chama render() do home.py — nunca importa como módulo de nível superior
         from home import render as render_home
         render_home()
         return
 
     user = st.session_state.user
-
     if getattr(user, "name", None):
         st.session_state["primeiro_nome"] = user.name.strip().split()[0]
 
@@ -78,6 +78,12 @@ def main() -> None:
     if pagina == "📊 Dashboard Admin":
         from src.admin.dashboard import render_dashboard
         render_dashboard()
+    elif pagina == "⚙️ Configuração":
+        render_configuracao()
+    elif pagina == "👥 Usuários":
+        render_usuarios()
+    elif pagina == "💰 Financeiro":
+        render_painel_pagamentos()
     else:
         oraculo_analista()
 
