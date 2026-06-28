@@ -1,4 +1,3 @@
-from .memory_manager import MemoryManager
-from .session_store import SessionStore
+from .session_memory import SessionMemory
 
-__all__ = ["MemoryManager", "SessionStore"]
+__all__ = ["SessionMemory"]

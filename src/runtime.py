@@ -1,6 +1,7 @@
 # ============================================================
 # src/runtime.py
 # Runtime principal — gerencia o loop de sessão agêntica
+# Versão 3.0: system prompt avançado + memória de sessão
 # ============================================================
 from __future__ import annotations
 
@@ -21,20 +22,19 @@ from .tools.file_tools import FileReadTool
 from .tools.search_tool import WebSearchTool
 from .tools.export_tool import ExportTool
 from .utils.helpers import truncate, generate_id, now_iso
+from .prompt.system_prompt import build as build_system_prompt
+from .memory.session_memory import SessionMemory
 
 
 class Runtime:
     """
-    Orquestra o loop completo de uma sessão:
+    Orquestra o loop completo de uma sessão agêntica.
 
-      1. Inicializa hooks, tools, permissões e QueryEngine
-      2. Recebe o input do usuário
-      3. Monta o system prompt com contexto de arquivos + tools
-      4. Chama o QueryEngine (que chama o LLM)
-      5. Persiste a mensagem no histórico
-      6. Retorna o texto gerado
-
-    Design: um Runtime por sessão Streamlit.
+    v3.0 — melhorias:
+      - system prompt rico via src/prompt/system_prompt.py
+      - memória de sessão via src/memory/session_memory.py
+      - audit_log exposto no st.session_state para o Dashboard Admin
+      - cost_hook exposto no st.session_state para o Dashboard Admin
     """
 
     def __init__(
@@ -50,12 +50,15 @@ class Runtime:
         self.cost_hook  = CostHook()
         self.audit_hook = AuditHook()
 
+        # Expõe hooks no session_state para o Dashboard Admin ler
+        st.session_state["_cost_hook"]  = self.cost_hook
+        st.session_state["_audit_log"]  = self.audit_hook.get_log()
+
         self.permissions = Permissions(permission_overrides)
 
         self.tools = ToolRegistry()
         self._register_default_tools()
 
-        # Prioridade: api_key passado → st.secrets → string vazia
         if api_key:
             key = api_key
         else:
@@ -72,6 +75,7 @@ class Runtime:
             audit_hook=self.audit_hook,
         )
 
+    # ── público ───────────────────────────────────────
     def run(
         self,
         user_input: str,
@@ -88,8 +92,20 @@ class Runtime:
             stream_callback=stream_callback,
         )
 
+        # Registra turno na memória e no audit
+        SessionMemory.registrar_turno(user_input, response)
+        self.audit_hook.log({
+            "prompt":       user_input[:120],
+            "total_tokens": self.cost_hook.summary()["total_tokens"],
+        })
+        st.session_state["_audit_log"] = self.audit_hook.get_log()
+
         self._save_turn(user_input, response)
         return response
+
+    def registrar_arquivo(self, nome: str) -> None:
+        """Chame após carregar um arquivo para registrar na memória."""
+        SessionMemory.registrar_arquivo(nome)
 
     def get_cost_summary(self) -> dict:
         return self.cost_hook.summary()
@@ -103,61 +119,41 @@ class Runtime:
         st.session_state["full_content"]         = ""
         self.cost_hook.reset()
         self.audit_hook.clear()
+        SessionMemory.reset()
+        st.session_state["_audit_log"] = []
 
+    # ── privado ───────────────────────────────────────
     def _register_default_tools(self) -> None:
-        file_tool   = FileReadTool()
-        search_tool = WebSearchTool()
-        export_tool = ExportTool()
-
-        self.tools.register(
-            name=file_tool.name,
-            description=file_tool.description,
-            func=file_tool,
-            permission=file_tool.permission,
-        )
-        self.tools.register(
-            name=search_tool.name,
-            description=search_tool.description,
-            func=search_tool,
-            permission=search_tool.permission,
-        )
-        self.tools.register(
-            name=export_tool.name,
-            description=export_tool.description,
-            func=export_tool,
-            permission=export_tool.permission,
-        )
+        for tool in [FileReadTool(), WebSearchTool(), ExportTool()]:
+            self.tools.register(
+                name=tool.name,
+                description=tool.description,
+                func=tool,
+                permission=tool.permission,
+            )
 
     def _build_system_prompt(self, file_context: str) -> str:
-        nome  = st.session_state.get("primeiro_nome", "Usuário")
-        tools = self.tools.describe_for_prompt()
-        ctx   = truncate(file_context, MAX_CONTEXT_CHARS)
+        nome          = st.session_state.get("primeiro_nome", "Usuário")
+        memoria_str   = SessionMemory.to_prompt_str()
+        tools_desc    = self.tools.describe_for_prompt()
 
-        return f"""Você é o {APP_NAME}, doutor e especialista em análise de dados, \
-desenvolvido pela equipe Oráculo IA Tec.
-Responda com objetividade, precisão e clareza em português brasileiro.
-Se a informação não estiver disponível no contexto, diga isso claramente.
-Usuário atual: {nome}
-
-{tools}
-
-## Contexto dos arquivos carregados:
-{ctx if ctx else 'Nenhum arquivo carregado nesta sessão.'}
-"""
+        return build_system_prompt(
+            nome_usuario=nome,
+            file_context=file_context,
+            memoria_sessao=memoria_str,
+            tools_desc=tools_desc,
+        )
 
     def _get_history(self) -> list[dict]:
+        msgs = st.session_state.get("messages", [])
         return [
             {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.get("messages", [])
+            for m in msgs
             if m["role"] in ("user", "assistant")
         ]
 
     def _save_turn(self, user_input: str, response: str) -> None:
         if "messages" not in st.session_state:
             st.session_state["messages"] = []
-        st.session_state["messages"].append(
-            {"role": "user",      "content": user_input}
-        )
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": response}
-        )
+        st.session_state["messages"].append({"role": "user",      "content": user_input})
+        st.session_state["messages"].append({"role": "assistant", "content": response})
