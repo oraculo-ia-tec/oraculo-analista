@@ -1,7 +1,6 @@
 # ============================================================
 # analista.py  —  Oráculo Analista  v3.0
 # ============================================================
-import io
 import json
 import os
 import time
@@ -49,7 +48,6 @@ BOTOES_CSS = """
 
 def _injetar_css_botoes() -> None:
     st.markdown(BOTOES_CSS, unsafe_allow_html=True)
-    # Aplica classes via JS (compat Streamlit)
     st.markdown("""
     <script>
     const btns = window.parent.document.querySelectorAll('button[kind="secondary"]');
@@ -73,7 +71,6 @@ def _dialog_como_usar() -> None:
 2. **📚 Ler Arquivos** — Clique em *Ler Arquivos* para que o Oráculo processe o conteúdo
 3. **❓ Fazer sua pergunta** — Digite sua dúvida no chat e pressione Enter
 4. **📊 Receba a análise** — O Oráculo responde com resposta direta, análise, insight e próximo passo
-5. **📥 Exportar** — Baixe a conversa em Excel ou PDF pelos botões ao final da página
 
 ### Tipos de arquivo suportados
 | Tipo | Extensões |
@@ -238,27 +235,6 @@ def mostrar_formulario_plano() -> None:
             st.balloons()
 
 
-def botoes_exportacao() -> None:
-    from src.tools.export_tool import ExportTool
-    msgs = st.session_state.get("messages", [])
-    if not msgs:
-        return
-    exp = ExportTool()
-    try:
-        excel = exp(format="excel", messages=msgs)
-        st.download_button("📊 Baixar conversa em Excel", data=excel,
-                           file_name="chat_oraculo.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e:
-        st.error(f"Erro ao gerar Excel: {e}")
-    try:
-        pdf_bytes = exp(format="pdf", messages=msgs)
-        st.download_button("📄 Baixar conversa em PDF", data=io.BytesIO(pdf_bytes),
-                           file_name="chat_oraculo.pdf", mime="application/pdf")
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {e}")
-
-
 # ── interface principal ─────────────────────────────────
 def oraculo_analista() -> None:
     atualizar_primeiro_nome()
@@ -280,7 +256,7 @@ def oraculo_analista() -> None:
             _dialog_como_usar()
 
     with col_b2:
-        uploaded_files = st.file_uploader(
+        st.file_uploader(
             "📤 Carregar Arquivos",
             type=["xlsx","pdf","xml","json","html","htm","doc","docx","txt","xls"],
             accept_multiple_files=True,
@@ -298,7 +274,6 @@ def oraculo_analista() -> None:
                 processados = [_processar_arquivo(f) for f in arquivos_up]
                 st.session_state["arquivos_processados"] = processados
                 st.session_state["full_content"]         = obter_resumo_arquivos(processados)
-                # Registra na memória do runtime
                 rt = get_runtime()
                 for arq in processados:
                     rt.registrar_arquivo(arq["name"])
@@ -376,5 +351,3 @@ def oraculo_analista() -> None:
 
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {e}")
-
-    botoes_exportacao()
