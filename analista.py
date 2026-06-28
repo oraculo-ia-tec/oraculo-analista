@@ -1,10 +1,9 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.1
+# analista.py  —  Oráculo Analista  v2.2
 # ============================================================
 import io
 import json
 import os
-import re
 import time
 import xml.etree.ElementTree as ET
 
@@ -18,18 +17,17 @@ from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
 from src.constants.settings import (
     MAX_TOKENS_FREE_PLAN,
-    MAX_TOKENS_PRO_PLAN,
     DEFAULT_MODEL,
 )
 from src.utils.helpers import truncate
+from agenda_analista import AgendaAnalista
 
 
 # =========================
 # Configurações via st.secrets
 # =========================
-GROQ_API_KEY           = st.secrets["groq"]["GROQ_API_KEY"]
-GROQ_MODEL             = st.secrets["groq"]["GROQ_MODEL"]
-WEBHOOK_AGENDA_ANALISTA = st.secrets.get("webhooks", {}).get("WEBHOOK_AGENDA_ANALISTA", "")
+GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
+GROQ_MODEL   = st.secrets["groq"]["GROQ_MODEL"]
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
@@ -38,6 +36,9 @@ icons = {
     "assistant": "./src/img/perfil-analista.png",
     "user":      "./src/img/usuario.jpg",
 }
+
+# Instância única da classe de agendamento
+_agenda = AgendaAnalista()
 
 
 # =========================
@@ -188,13 +189,13 @@ def verificar_intencao_usuario(prompt: str) -> str | None:
     p = prompt.lower()
     if any(k in p for k in ["plano", "assinar", "upgrade", "mensal", "trimestral", "anual", "contratar", "preço"]):
         return "plano"
-    if any(k in p for k in ["reunião", "agendar", "consultoria", "falar com o desenvolvedor", "encontro"]):
+    if AgendaAnalista.detectar_intencao(prompt):
         return "reuniao"
     return None
 
 
 # =========================
-# Formulários de intenção
+# Formulário de planos
 # =========================
 def mostrar_formulario_plano() -> None:
     st.markdown("💡 Percebi que você está interessado em nossos planos! Veja as opções abaixo:")
@@ -217,29 +218,6 @@ def mostrar_formulario_plano() -> None:
         if st.form_submit_button("Confirmar plano"):
             st.success("✅ Plano selecionado! Você será redirecionado para concluir a assinatura.")
             st.balloons()
-
-
-def mostrar_formulario_reuniao() -> None:
-    st.markdown("📅 Parece que você deseja agendar uma reunião! Preencha abaixo:")
-    with st.form("form_agendamento", clear_on_submit=True):
-        nome     = st.text_input("Nome completo")
-        empresa  = st.text_input("Empresa (opcional)")
-        whatsapp = st.text_input("WhatsApp")
-        email    = st.text_input("E-mail")
-        data     = st.date_input("Data")
-        hora     = st.time_input("Horário")
-        if st.form_submit_button("Agendar"):
-            payload = {"nome": nome, "empresa": empresa, "whatsapp": whatsapp,
-                       "email": email, "data": str(data), "hora": str(hora)}
-            try:
-                r = requests.post(WEBHOOK_AGENDA_ANALISTA, json=payload, timeout=20)
-                if r.status_code == 200:
-                    st.success(f"✅ Obrigado {nome}, agendamento realizado!")
-                    st.balloons()
-                else:
-                    st.error("❌ Erro ao enviar agendamento.")
-            except Exception as e:
-                st.error(f"Erro: {e}")
 
 
 # =========================
@@ -341,12 +319,13 @@ def oraculo_analista() -> None:
             return
 
         if intencao:
-            time.sleep(1)
+            time.sleep(0.5)
             with st.chat_message("assistant", avatar=icons["assistant"]):
                 if intencao == "plano":
                     mostrar_formulario_plano()
                 else:
-                    mostrar_formulario_reuniao()
+                    # ⭐ AgendaAnalista assume o controle
+                    _agenda.renderizar_formulario()
             return
 
         with st.chat_message("assistant", avatar=icons["assistant"]):
