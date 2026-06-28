@@ -1,12 +1,10 @@
 # ============================================================
 # src/models/migrate.py
 # Migration automática — adiciona colunas novas sem apagar dados
-# Compatível com SQLAlchemy 2.x (usa text() em todas as queries)
+# Compatível com SQLAlchemy 2.x
 # ============================================================
 from __future__ import annotations
-
 import logging
-
 from sqlalchemy import text
 from .base import engine
 
@@ -18,6 +16,8 @@ _COLUNAS_USER_ANALISE = [
     ("acesso_autorizado",    "BOOLEAN      DEFAULT 0"),
     ("upgrade_solicitado",   "VARCHAR(20)"),
     ("data_vencimento",      "DATE"),
+    # imagem persistida como Base64 — sobrevive a deploys
+    ("profile_image_b64",    "TEXT"),
 ]
 
 

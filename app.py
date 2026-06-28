@@ -1,8 +1,7 @@
 # ============================================================
 # app.py — Oráculo Analista
-# Router principal — set_page_config DEVE ser o primeiro comando
+# Router principal
 # ============================================================
-import os
 import streamlit as st
 
 st.set_page_config(
@@ -12,35 +11,29 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from src.models.base import Base, engine          # noqa: E402
-from src.models.migrate import rodar_migrations   # noqa: E402
-from src.auth.ui import interface                  # noqa: E402
-from src.styles.theme import apply_global_theme    # noqa: E402
-from src.admin.access import tem_acesso_admin      # noqa: E402
-from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios  # noqa: E402
-from analista import oraculo_analista              # noqa: E402
-from pagamentos import render_painel_pagamentos    # noqa: E402
-from notification import Notificador               # noqa: E402
+import os
+from src.models.base import Base, engine
+from src.models.migrate import rodar_migrations
+from src.auth.ui import interface
+from src.styles.theme import apply_global_theme
+from src.admin.access import tem_acesso_admin
+from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios
+from src.utils.avatar import get_avatar
+from analista import oraculo_analista
+from pagamentos import render_painel_pagamentos
+from notification import Notificador  # noqa
 
-# 1º cria tabelas novas
 Base.metadata.create_all(engine)
-# 2º adiciona colunas que não existiam no banco já criado
 rodar_migrations()
-
 apply_global_theme()
 
 
 def _sidebar_usuario_logado(user) -> str:
     st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
 
-    avatar = (
-        user.profile_image_path
-        if getattr(user, "profile_image_path", None)
-        and os.path.exists(user.profile_image_path or "")
-        else "./src/img/usuario.jpg"
-    )
-    if os.path.exists(avatar):
-        st.sidebar.image(avatar, width=100)
+    # ── Avatar: Base64 (banco) > arquivo local > padrão ──
+    avatar = get_avatar(user)
+    st.sidebar.image(avatar, width=100)
 
     st.sidebar.write(f"📧 {user.email}")
     st.sidebar.write(f"📱 {user.whatsapp}")

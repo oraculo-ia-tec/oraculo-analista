@@ -9,6 +9,7 @@ from sqlalchemy.orm import make_transient
 from ..models.base import Session
 from ..models.user import UserAnalise
 from ..payments.plans import PLANOS
+from ..utils.avatar import image_to_b64, get_avatar
 
 
 def _hash(senha: str) -> str:
@@ -16,7 +17,6 @@ def _hash(senha: str) -> str:
 
 
 def _recarregar_user(user_id: int) -> UserAnalise | None:
-    """Recarrega o user do banco e o desvincula da sessão."""
     with Session() as session:
         u = session.query(UserAnalise).filter_by(id=user_id).first()
         if u:
@@ -35,20 +35,18 @@ def render_configuracao() -> None:
 
     with tab1:
         st.subheader("Seus dados cadastrais")
+
+        # Pré-visualiza avatar atual
+        avatar_atual = get_avatar(user)
+        st.image(avatar_atual, width=100, caption="Foto atual")
+
         nome_novo = st.text_input("Nome",     value=user.name,     key="cfg_nome")
         zap_novo  = st.text_input("WhatsApp", value=user.whatsapp, key="cfg_zap")
         st.text_input("E-mail", value=user.email, disabled=True)
 
-        nova_img  = st.file_uploader("Foto de perfil (PNG/JPG)", type=["png","jpg","jpeg"], key="cfg_img")
-        caminho   = None
+        nova_img = st.file_uploader("Nova foto de perfil (PNG/JPG)", type=["png","jpg","jpeg"], key="cfg_img")
         if nova_img:
-            import os
-            os.makedirs("./user_profiles/", exist_ok=True)
-            ext     = nova_img.name.split(".")[-1]
-            caminho = f"./user_profiles/{user.id}_profile.{ext}"
-            with open(caminho, "wb") as f:
-                f.write(nova_img.read())
-            st.image(caminho, width=120)
+            st.image(nova_img, width=120, caption="Pré-visualização")
 
         if st.button("💾 Salvar dados", key="cfg_salvar"):
             with Session() as session:
@@ -56,14 +54,24 @@ def render_configuracao() -> None:
                 if u:
                     u.name     = nome_novo
                     u.whatsapp = zap_novo
-                    if caminho:
+                    if nova_img:
+                        # Salva como Base64 — persiste entre deploys
+                        u.profile_image_b64  = image_to_b64(nova_img)
+                        # Salva arquivo local também (compat retroativa)
+                        import os
+                        os.makedirs("./user_profiles/", exist_ok=True)
+                        ext    = nova_img.name.split(".")[-1]
+                        caminho = f"./user_profiles/{user.id}_profile.{ext}"
+                        nova_img.seek(0)
+                        with open(caminho, "wb") as f:
+                            f.write(nova_img.read())
                         u.profile_image_path = caminho
                     session.commit()
                     session.refresh(u)
                     session.expunge(u)
                     make_transient(u)
-                    st.session_state.user = u   # ← salva já desvinculado
-                    st.success("✅ Dados atualizados!")
+                    st.session_state.user = u
+                    st.success("✅ Dados atualizados! A foto de perfil foi salva.")
                     st.rerun()
 
     with tab2:

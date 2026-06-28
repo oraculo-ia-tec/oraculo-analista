@@ -15,6 +15,7 @@ from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
 from src.constants.settings import MAX_TOKENS_FREE_PLAN, DEFAULT_MODEL
 from src.utils.helpers import truncate
+from src.utils.avatar import get_avatar
 from src.styles.theme import apply_global_theme
 from agenda_analista import AgendaAnalista
 
@@ -143,10 +144,11 @@ def atualizar_primeiro_nome() -> None:
         st.session_state["primeiro_nome"] = user.name.strip().split()[0]
 
 
-def obter_avatar_usuario() -> str:
+def obter_avatar_usuario():
+    """Retorna avatar do usuário via get_avatar() — Base64 > arquivo > padrão."""
     user = st.session_state.get("user")
-    if user and getattr(user, "profile_image_path", None) and os.path.exists(user.profile_image_path):
-        return user.profile_image_path
+    if user:
+        return get_avatar(user)
     return "./src/img/usuario.jpg"
 
 
@@ -248,13 +250,10 @@ def oraculo_analista() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Botões animados ────────────────────────────────
     col_b1, col_b2, col_b3 = st.columns(3)
-
     with col_b1:
         if st.button("📖 Como Usar", use_container_width=True, key="btn_como_usar"):
             _dialog_como_usar()
-
     with col_b2:
         st.file_uploader(
             "📤 Carregar Arquivos",
@@ -264,12 +263,11 @@ def oraculo_analista() -> None:
             label_visibility="collapsed",
         )
         st.button("📤 Carregar Arquivos", use_container_width=True, key="btn_carregar_label", disabled=True)
-
     with col_b3:
         if st.button("📚 Ler Arquivos", use_container_width=True, key="btn_ler"):
             arquivos_up = st.session_state.get("uploader_principal", []) or []
             if not arquivos_up:
-                st.warning("Nenhum arquivo carregado ainda. Use o botão ‘Carregar Arquivos’ primeiro.")
+                st.warning("Nenhum arquivo carregado ainda.")
             else:
                 processados = [_processar_arquivo(f) for f in arquivos_up]
                 st.session_state["arquivos_processados"] = processados
@@ -299,6 +297,7 @@ def oraculo_analista() -> None:
         }]
 
     for msg in st.session_state["messages"]:
+        # ─ avatar correto para cada mensagem ─
         avatar = obter_avatar_usuario() if msg["role"] == "user" else icons["assistant"]
         with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
@@ -336,11 +335,9 @@ def oraculo_analista() -> None:
                 runtime      = get_runtime()
                 file_context = st.session_state.get("full_content", "")
                 container    = st.empty()
-
                 with st.spinner("Gerando análise..."):
                     def _stream_cb(text: str):
                         container.markdown(text)
-
                     st.session_state["messages"].pop()
                     response = runtime.run(
                         user_input=prompt,
@@ -348,6 +345,5 @@ def oraculo_analista() -> None:
                         stream_callback=_stream_cb,
                     )
                 container.markdown(response)
-
             except Exception as e:
                 st.error(f"Erro ao gerar análise: {e}")
