@@ -5,6 +5,7 @@
 from __future__ import annotations
 import hashlib
 import streamlit as st
+from sqlalchemy.orm import make_transient
 from ..models.base import Session
 from ..models.user import UserAnalise
 from ..payments.plans import PLANOS
@@ -12,6 +13,16 @@ from ..payments.plans import PLANOS
 
 def _hash(senha: str) -> str:
     return hashlib.sha256(senha.encode()).hexdigest()
+
+
+def _recarregar_user(user_id: int) -> UserAnalise | None:
+    """Recarrega o user do banco e o desvincula da sessão."""
+    with Session() as session:
+        u = session.query(UserAnalise).filter_by(id=user_id).first()
+        if u:
+            session.expunge(u)
+            make_transient(u)
+        return u
 
 
 def render_configuracao() -> None:
@@ -28,11 +39,12 @@ def render_configuracao() -> None:
         zap_novo  = st.text_input("WhatsApp", value=user.whatsapp, key="cfg_zap")
         st.text_input("E-mail", value=user.email, disabled=True)
 
-        nova_img = st.file_uploader("Foto de perfil (PNG/JPG)", type=["png","jpg","jpeg"], key="cfg_img")
+        nova_img  = st.file_uploader("Foto de perfil (PNG/JPG)", type=["png","jpg","jpeg"], key="cfg_img")
+        caminho   = None
         if nova_img:
             import os
             os.makedirs("./user_profiles/", exist_ok=True)
-            ext    = nova_img.name.split(".")[-1]
+            ext     = nova_img.name.split(".")[-1]
             caminho = f"./user_profiles/{user.id}_profile.{ext}"
             with open(caminho, "wb") as f:
                 f.write(nova_img.read())
@@ -44,10 +56,13 @@ def render_configuracao() -> None:
                 if u:
                     u.name     = nome_novo
                     u.whatsapp = zap_novo
-                    if nova_img:
+                    if caminho:
                         u.profile_image_path = caminho
                     session.commit()
-                    st.session_state.user = u
+                    session.refresh(u)
+                    session.expunge(u)
+                    make_transient(u)
+                    st.session_state.user = u   # ← salva já desvinculado
                     st.success("✅ Dados atualizados!")
                     st.rerun()
 
@@ -94,4 +109,7 @@ def render_configuracao() -> None:
                         if u:
                             u.upgrade_solicitado = chave
                             session.commit()
+                    u_fresh = _recarregar_user(user.id)
+                    if u_fresh:
+                        st.session_state.user = u_fresh
                     st.success(f"✅ Upgrade para **{info['label']}** solicitado!")

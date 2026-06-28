@@ -10,6 +10,7 @@ import string
 
 import bcrypt
 import streamlit as st
+from sqlalchemy.orm import make_transient
 
 from ..models.base import Session
 from ..models.user import UserAnalise
@@ -41,6 +42,16 @@ def _enviar_codigo(email: str, nome: str, codigo: str) -> None:
         f"<p>Seu código de verificação é: <strong>{codigo}</strong></p>"
         "<p>Use este código para ativar sua conta.</p>",
     )
+
+
+def _expunge_user(session, user: UserAnalise) -> UserAnalise:
+    """
+    Desvincula o objeto ORM da sessão para que possa ser armazenado
+    no st.session_state sem gerar DetachedInstanceError.
+    """
+    session.expunge(user)
+    make_transient(user)
+    return user
 
 
 def cadastrar_usuario(
@@ -90,7 +101,7 @@ def autenticar_usuario(email: str, password: str):
                 st.session_state.verificacao_pos_login = True
                 return None
             if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
-                return user
+                return _expunge_user(session, user)   # ← desvincula antes de retornar
             st.error("Credenciais inválidas.")
             return None
         except Exception as e:
@@ -109,14 +120,14 @@ def verificar_codigo(email: str, codigo: str) -> bool:
             user.is_verified       = True
             user.verification_code = None
             session.commit()
+            session.refresh(user)
+            _expunge_user(session, user)               # ← desvincula após refresh
 
-            with Session() as s2:
-                fresh = s2.query(UserAnalise).filter_by(email=email).first()
-                st.session_state.user              = fresh
-                st.session_state.logged_in         = True
-                st.session_state.codigo_confirmado = True
-                st.session_state.temp_email        = None
-                st.rerun()
+            st.session_state.user              = user
+            st.session_state.logged_in         = True
+            st.session_state.codigo_confirmado = True
+            st.session_state.temp_email        = None
+            st.rerun()
             return True
 
         except Exception as e:
