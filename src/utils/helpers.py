@@ -1,51 +1,30 @@
 # ============================================================
 # src/utils/helpers.py
-# Utilitários reutilizáveis em todo o projeto
+# Funções utilitárias gerais
 # ============================================================
-import re
-import time
+from __future__ import annotations
+
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def truncate(text: str, limite: int = 6000) -> str:
+    """Trunca texto ao limite de caracteres."""
+    if len(text) <= limite:
+        return text
+    return text[:limite] + "\n\n[... conteúdo truncado ...]"
+
+
+def estimate_tokens(text: str) -> int:
+    """Estima tokens de forma simples (4 chars ≈ 1 token)."""
+    return max(1, len(text) // 4)
 
 
 def generate_id(prefix: str = "") -> str:
     """Gera um ID único com prefixo opcional."""
-    uid = str(uuid.uuid4()).replace("-", "")[:12]
-    return f"{prefix}{uid}" if prefix else uid
+    return f"{prefix}{uuid.uuid4().hex[:12]}"
 
 
 def now_iso() -> str:
-    """Retorna timestamp ISO 8601 atual."""
-    return datetime.utcnow().isoformat() + "Z"
-
-
-def truncate(text: str, limit: int = 12000) -> str:
-    """Trunca texto ao limite de caracteres com aviso."""
-    if not text:
-        return ""
-    text = text.strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit] + "\n\n[Conteúdo truncado por limite de contexto.]"
-
-
-def strip_think_tags(text: str) -> str:
-    """Remove blocos <think>...</think> do output do LLM."""
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
-
-def estimate_tokens(text: str) -> int:
-    """Estimativa rápida: ~4 chars por token."""
-    return max(1, len(text) // 4)
-
-
-def retry(func, retries: int = 3, delay: float = 1.5):
-    """Executa `func` com retentativas em caso de exceção."""
-    last_exc = None
-    for attempt in range(retries):
-        try:
-            return func()
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            time.sleep(delay * (attempt + 1))
-    raise last_exc
+    """Retorna timestamp ISO 8601 UTC."""
+    return datetime.now(timezone.utc).isoformat()

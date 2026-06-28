@@ -1,21 +1,19 @@
 # ============================================================
 # src/hooks/cost_hook.py
-# Hook de custo — intercepta toda chamada ao LLM e acumula
-# o gasto estimado da sessão (estilo Claude Code costHook)
+# Hook de custo — rastreia tokens e custo estimado por sessão
 # ============================================================
-from ..utils.helpers import estimate_tokens
+from __future__ import annotations
+
 from ..constants.settings import COST_PER_1M_INPUT_TOKENS, COST_PER_1M_OUTPUT_TOKENS
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
 
 
 class CostHook:
     """
     Rastreia tokens consumidos e custo acumulado na sessão.
-
-    Uso:
-        hook = CostHook()
-        hook.on_request(system_prompt + user_prompt)
-        hook.on_response(assistant_text)
-        print(hook.summary())
     """
 
     def __init__(self):
@@ -24,17 +22,20 @@ class CostHook:
         self._calls        = 0
 
     def on_request(self, prompt_text: str) -> None:
-        """Chamado antes de enviar ao LLM."""
-        self.input_tokens += estimate_tokens(prompt_text)
+        self.input_tokens += _estimate_tokens(prompt_text)
         self._calls += 1
 
     def on_response(self, response_text: str) -> None:
-        """Chamado após receber a resposta do LLM."""
-        self.output_tokens += estimate_tokens(response_text)
+        self.output_tokens += _estimate_tokens(response_text)
+
+    def add(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """Adiciona tokens direto da resposta do LLM."""
+        self.input_tokens  += prompt_tokens
+        self.output_tokens += completion_tokens
+        self._calls        += 1
 
     @property
     def cost_usd(self) -> float:
-        """Custo estimado em USD."""
         input_cost  = (self.input_tokens  / 1_000_000) * COST_PER_1M_INPUT_TOKENS
         output_cost = (self.output_tokens / 1_000_000) * COST_PER_1M_OUTPUT_TOKENS
         return round(input_cost + output_cost, 6)
