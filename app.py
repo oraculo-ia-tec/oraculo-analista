@@ -20,7 +20,7 @@ from src.styles.theme import apply_global_theme
 from src.admin.access import tem_acesso_admin
 from src.sidebar import render_configuracao, render_usuarios, tem_acesso_usuarios
 from src.utils.avatar import get_avatar
-from analista import oraculo_analista
+from analista import oraculo_analista, get_runtime
 from pagamentos import render_painel_pagamentos
 from notification import Notificador  # noqa
 
@@ -37,7 +37,6 @@ def _img_to_b64(path: str) -> str:
 
 
 def _avatar_b64(user) -> str:
-    """Retorna Base64 da imagem do usuário (banco > arquivo > padrão)."""
     avatar = get_avatar(user)
     if isinstance(avatar, bytes):
         return base64.b64encode(avatar).decode()
@@ -51,7 +50,6 @@ def _avatar_b64(user) -> str:
 
 
 def _sidebar_logo() -> None:
-    """Imagem do Oráculo no topo da sidebar — borda redonda dourada."""
     if not os.path.exists(ORACULO_IMG):
         return
     b64 = _img_to_b64(ORACULO_IMG)
@@ -74,7 +72,6 @@ def _sidebar_logo() -> None:
 
 
 def _sidebar_user_card(user) -> None:
-    """Card retangular: avatar (col esq) + dados (col dir) com borda."""
     av_b64 = _avatar_b64(user)
     img_tag = (
         f'<img src="data:image/png;base64,{av_b64}"'
@@ -84,9 +81,8 @@ def _sidebar_user_card(user) -> None:
         '<div style="width:64px;height:64px;border-radius:50%;'
         'background:#444;border:2px solid #c9a84c;"></div>'
     )
-
-    plano  = getattr(user, "plano", "free") or "free"
-    acesso = getattr(user, "acesso_autorizado", False)
+    plano       = getattr(user, "plano", "free") or "free"
+    acesso      = getattr(user, "acesso_autorizado", False)
     badge_cor   = "#22c55e" if acesso else "#f59e0b"
     badge_texto = "Ativo" if acesso else "Pendente"
 
@@ -98,36 +94,22 @@ def _sidebar_user_card(user) -> None:
             padding:10px 12px; margin-bottom:10px;
             background:rgba(255,255,255,0.03);
         ">
-            <!-- coluna esquerda: avatar -->
-            <div style="flex-shrink:0;">
-                {img_tag}
-            </div>
-            <!-- coluna direita: dados -->
+            <div style="flex-shrink:0;">{img_tag}</div>
             <div style="flex:1; min-width:0; font-size:0.82rem; line-height:1.55;">
                 <div style="font-weight:700; font-size:0.92rem;
                             white-space:nowrap; overflow:hidden;
-                            text-overflow:ellipsis;">
-                    {user.name}
-                </div>
+                            text-overflow:ellipsis;">{user.name}</div>
                 <div style="color:#aaa; white-space:nowrap; overflow:hidden;
-                            text-overflow:ellipsis;">
-                    📧 {user.email}
-                </div>
-                <div style="color:#aaa;">
-                    📱 {user.whatsapp}
-                </div>
+                            text-overflow:ellipsis;">📧 {user.email}</div>
+                <div style="color:#aaa;">📱 {user.whatsapp}</div>
                 <div style="margin-top:4px;">
                     <span style="background:#1e1e2e; border:1px solid #555;
                                  border-radius:4px; padding:1px 6px;
-                                 font-size:0.75rem; color:#c9a84c;">
-                        {plano.capitalize()}
-                    </span>
+                                 font-size:0.75rem; color:#c9a84c;">{plano.capitalize()}</span>
                     <span style="margin-left:6px; background:{badge_cor}22;
-                                 border:1px solid {badge_cor};
-                                 border-radius:4px; padding:1px 6px;
-                                 font-size:0.75rem; color:{badge_cor};">
-                        {badge_texto}
-                    </span>
+                                 border:1px solid {badge_cor}; border-radius:4px;
+                                 padding:1px 6px; font-size:0.75rem;
+                                 color:{badge_cor};">{badge_texto}</span>
                 </div>
             </div>
         </div>
@@ -150,12 +132,23 @@ def _sidebar_usuario_logado(user) -> str:
     pagina = st.sidebar.radio("Navegar para:", paginas, key="nav_pagina")
 
     st.sidebar.divider()
-    if st.sidebar.button("🔓 Sair do sistema"):
-        for key in ["user", "logged_in", "codigo_confirmado", "temp_email",
-                    "primeiro_nome", "messages", "full_content",
-                    "arquivos_processados", "nav_pagina"]:
-            st.session_state.pop(key, None)
-        st.rerun()
+
+    # ── Botões lado a lado: Limpar Conversa | Sair ──
+    col_limpar, col_sair = st.sidebar.columns(2)
+    with col_limpar:
+        if st.button("🔄 Limpar", use_container_width=True, key="btn_limpar_sidebar"):
+            get_runtime().reset_session()
+            st.session_state.pop("messages", None)
+            st.session_state.pop("full_content", None)
+            st.session_state.pop("arquivos_processados", None)
+            st.rerun()
+    with col_sair:
+        if st.button("🔓 Sair", use_container_width=True, key="btn_sair_sidebar"):
+            for key in ["user", "logged_in", "codigo_confirmado", "temp_email",
+                        "primeiro_nome", "messages", "full_content",
+                        "arquivos_processados", "nav_pagina", "_runtime"]:
+                st.session_state.pop(key, None)
+            st.rerun()
 
     return pagina
 

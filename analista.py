@@ -279,13 +279,7 @@ def oraculo_analista() -> None:
 
     st.divider()
 
-    if os.path.exists("./src/img/perfil-analista.png"):
-        st.sidebar.image("./src/img/perfil-analista.png", width=500)
-
-    if st.sidebar.button("🔄 Limpar Conversa"):
-        get_runtime().reset_session()
-        st.rerun()
-
+    # ─ custo ─ (sem imagem duplicada e sem botão Limpar aqui — movidos para app.py)
     render_cost_widget()
 
     if "messages" not in st.session_state:
@@ -297,7 +291,6 @@ def oraculo_analista() -> None:
         }]
 
     for msg in st.session_state["messages"]:
-        # ─ avatar correto para cada mensagem ─
         avatar = obter_avatar_usuario() if msg["role"] == "user" else icons["assistant"]
         with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
