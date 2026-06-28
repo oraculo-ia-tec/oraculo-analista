@@ -11,6 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+import base64
 import os
 from src.models.base import Base, engine
 from src.models.migrate import rodar_migrations
@@ -27,13 +28,80 @@ Base.metadata.create_all(engine)
 rodar_migrations()
 apply_global_theme()
 
+ORACULO_IMG = "./src/img/perfil-analista.png"
+
+
+def _img_to_b64(path: str) -> str:
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def _sidebar_logo() -> None:
+    """Exibe a imagem do Oráculo no topo da sidebar com borda redonda via HTML."""
+    if not os.path.exists(ORACULO_IMG):
+        return
+    b64 = _img_to_b64(ORACULO_IMG)
+    st.sidebar.markdown(
+        f"""
+        <div style="display:flex; justify-content:center; padding: 8px 0 4px 0;">
+            <img src="data:image/png;base64,{b64}"
+                 style="width:110px; height:110px;
+                        border-radius:50%;
+                        object-fit:cover;
+                        border: 3px solid #c9a84c;
+                        box-shadow: 0 0 12px rgba(201,168,76,0.5);" />
+        </div>
+        <div style="text-align:center; font-size:0.85rem;
+                    color:#c9a84c; letter-spacing:1px;
+                    margin-bottom:8px;">
+            ORÁCULO ANALISTA
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 def _sidebar_usuario_logado(user) -> str:
-    st.sidebar.subheader(f"Bem-vindo(a), {user.name}")
+    _sidebar_logo()
 
-    # ── Avatar: Base64 (banco) > arquivo local > padrão ──
+    # Avatar do usuário com borda redonda
     avatar = get_avatar(user)
-    st.sidebar.image(avatar, width=100)
+    if isinstance(avatar, bytes):
+        avatar_b64 = base64.b64encode(avatar).decode()
+        st.sidebar.markdown(
+            f"""
+            <div style="display:flex; flex-direction:column;
+                        align-items:center; margin-bottom:6px;">
+                <img src="data:image/png;base64,{avatar_b64}"
+                     style="width:72px; height:72px;
+                            border-radius:50%; object-fit:cover;
+                            border:2px solid #888;" />
+                <span style="font-size:0.9rem; margin-top:4px;
+                             font-weight:600;">{user.name}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        # arquivo local ou padrão
+        if os.path.exists(str(avatar)):
+            av_b64 = _img_to_b64(str(avatar))
+            st.sidebar.markdown(
+                f"""
+                <div style="display:flex; flex-direction:column;
+                            align-items:center; margin-bottom:6px;">
+                    <img src="data:image/png;base64,{av_b64}"
+                         style="width:72px; height:72px;
+                                border-radius:50%; object-fit:cover;
+                                border:2px solid #888;" />
+                    <span style="font-size:0.9rem; margin-top:4px;
+                                 font-weight:600;">{user.name}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.sidebar.subheader(user.name)
 
     st.sidebar.write(f"📧 {user.email}")
     st.sidebar.write(f"📱 {user.whatsapp}")
@@ -61,6 +129,7 @@ def _sidebar_usuario_logado(user) -> str:
 
 def main() -> None:
     if not st.session_state.get("logged_in"):
+        _sidebar_logo()
         interface()
         from home import render as render_home
         render_home()
