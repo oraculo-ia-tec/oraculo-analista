@@ -5,26 +5,23 @@ import string
 import bcrypt
 import requests
 import streamlit as st
-from decouple import AutoConfig
 from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-
 
 from notification import Notificador
 from analista import oraculo_analista
 
 
 # =========================
-# Configurações
+# Configurações via st.secrets
 # =========================
-config = AutoConfig()
-DATABASE_URL = config("DATABASE_URL", default="sqlite:///oraculo_analista.db")  # fix: banco correto
-WEBHOOK_CADASTRO_ANALISTA = config("WEBHOOK_CADASTRO_ANALISTA", default="")
-VIDEO_PATH = config("VIDEO_PATH", default="src/video/oraculo-analista.mp4")
+DATABASE_URL               = st.secrets["default"]["DATABASE_URL"]
+WEBHOOK_CADASTRO_ANALISTA  = st.secrets.get("webhooks", {}).get("WEBHOOK_CADASTRO_ANALISTA", "")
+VIDEO_PATH                 = "src/video/oraculo-analista.mp4"
 
-engine = create_engine(DATABASE_URL)
+engine  = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 Session = sessionmaker(bind=engine)
-Base = declarative_base()
+Base    = declarative_base()
 
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
@@ -35,85 +32,79 @@ os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 # =========================
 class UserAdmin(Base):
     __tablename__ = "user_admin"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False)
-    cpf_cnpj = Column(String(20))
-    email = Column(String(254), unique=True, nullable=False)
-    whatsapp = Column(String(15))
-    endereco = Column(String(255))
-    cep = Column(String(10))
-    bairro = Column(String(100))
-    cidade = Column(String(100))
-    username = Column(String(50))
-    password = Column(String(128))
-    image = Column(String(100))
-    created_at = Column(String(50))
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    name         = Column(String(100), nullable=False)
+    cpf_cnpj     = Column(String(20))
+    email        = Column(String(254), unique=True, nullable=False)
+    whatsapp     = Column(String(15))
+    endereco     = Column(String(255))
+    cep          = Column(String(10))
+    bairro       = Column(String(100))
+    cidade       = Column(String(100))
+    username     = Column(String(50))
+    password     = Column(String(128))
+    image        = Column(String(100))
+    created_at   = Column(String(50))
     created_time = Column(String(50))
-    deleted_at = Column(String(50))
+    deleted_at   = Column(String(50))
     deleted_time = Column(String(50))
-    cargo_id = Column(BigInteger, ForeignKey("cargo.id"))
-    decisao = Column(Boolean)
-    culto_id = Column(BigInteger)
+    cargo_id     = Column(BigInteger, ForeignKey("cargo.id"))
+    decisao      = Column(Boolean)
+    culto_id     = Column(BigInteger)
     estado_civil = Column(String(20))
-    filhos = Column(Integer)
+    filhos       = Column(Integer)
 
 
 class Enquete(Base):
-    __tablename__ = "enquete"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    titulo = Column(String(200))
-    descricao = Column(String)
-    data_inicio = Column(String)
-    data_fim = Column(String)
-    ativo = Column(Boolean)
-    opcao1 = Column(String(200))
-    opcao2 = Column(String(200))
-    opcao3 = Column(String(200))
-    opcao4 = Column(String(200))
-    created_dt = Column(String)
-    updated_dt = Column(String)
-    cargo_id = Column(BigInteger, ForeignKey("cargo.id"))
+    __tablename__  = "enquete"
+    id             = Column(BigInteger, primary_key=True, autoincrement=True)
+    titulo         = Column(String(200))
+    descricao      = Column(String)
+    data_inicio    = Column(String)
+    data_fim       = Column(String)
+    ativo          = Column(Boolean)
+    opcao1         = Column(String(200))
+    opcao2         = Column(String(200))
+    opcao3         = Column(String(200))
+    opcao4         = Column(String(200))
+    created_dt     = Column(String)
+    updated_dt     = Column(String)
+    cargo_id       = Column(BigInteger, ForeignKey("cargo.id"))
 
 
 class RespostaEnquete(Base):
     __tablename__ = "resposta_enquete"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    resposta = Column(String(255))
-    explicacao = Column(String)
-    enquete_id = Column(BigInteger, ForeignKey("enquete.id"))
-    usuario_id = Column(BigInteger, ForeignKey("user_analise.id"))
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    resposta      = Column(String(255))
+    explicacao    = Column(String)
+    enquete_id    = Column(BigInteger, ForeignKey("enquete.id"))
+    usuario_id    = Column(BigInteger, ForeignKey("user_analise.id"))
 
 
 class DirecionadoEnquete(Base):
     __tablename__ = "direcionado_enquete"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    enquete_id = Column(BigInteger, ForeignKey("enquete.id"))
-    cargo_id = Column(BigInteger, ForeignKey("cargo.id"))
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    enquete_id    = Column(BigInteger, ForeignKey("enquete.id"))
+    cargo_id      = Column(BigInteger, ForeignKey("cargo.id"))
 
 
 class Cargo(Base):
     __tablename__ = "cargo"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    nome = Column(String(50), nullable=False, unique=True)
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    nome          = Column(String(50), nullable=False, unique=True)
 
 
 class UserAnalise(Base):
-    __tablename__ = "user_analise"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    whatsapp = Column(String(20), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    profile_image_path = Column(String(500), nullable=True)
-    verification_code = Column(String(6), nullable=True)
-    is_verified = Column(Boolean, default=False)
-    cargo_id = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
+    __tablename__        = "user_analise"
+    id                   = Column(Integer, primary_key=True)
+    name                 = Column(String(255), nullable=False)
+    whatsapp             = Column(String(20), nullable=False)
+    email                = Column(String(255), unique=True, nullable=False)
+    password             = Column(String(255), nullable=False)
+    profile_image_path   = Column(String(500), nullable=True)
+    verification_code    = Column(String(6), nullable=True)
+    is_verified          = Column(Boolean, default=False)
+    cargo_id             = Column(BigInteger, ForeignKey("cargo.id"), nullable=False)
 
 
 Base.metadata.create_all(engine)
@@ -129,7 +120,6 @@ def gerar_codigo_verificacao(tamanho: int = 6) -> str:
 def save_profile_image(image, user_email: str) -> str | None:
     if image is None:
         return None
-
     path = os.path.join(PROFILE_IMAGES_DIR, f"{user_email}.png")
     with open(path, "wb") as f:
         f.write(image.getbuffer())
@@ -140,10 +130,8 @@ def send_to_make_webhook(data: dict) -> bool:
     if not WEBHOOK_CADASTRO_ANALISTA:
         st.error("Webhook não configurado.")
         return False
-
     try:
-        response = requests.post(
-            WEBHOOK_CADASTRO_ANALISTA, json=data, timeout=20)
+        response = requests.post(WEBHOOK_CADASTRO_ANALISTA, json=data, timeout=20)
         return response.status_code == 200
     except Exception as e:
         st.error(f"Erro webhook: {e}")
@@ -154,119 +142,101 @@ def send_to_make_webhook(data: dict) -> bool:
 # Cadastro
 # =========================
 def cadastrar_usuario(name, whatsapp, email, password, profile_image, cargo_id):
-    session = Session()
-    try:
-        usuario_existente = session.query(UserAnalise).filter_by(email=email).first()
-        if usuario_existente:
-            st.error("E-mail já cadastrado.")
+    with Session() as session:
+        try:
+            if session.query(UserAnalise).filter_by(email=email).first():
+                st.error("E-mail já cadastrado.")
+                return False
+
+            image_path = save_profile_image(profile_image, email)
+            codigo     = gerar_codigo_verificacao()
+            senha_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+            novo_usuario = UserAnalise(
+                name=name,
+                whatsapp=whatsapp,
+                email=email,
+                password=senha_hash,
+                profile_image_path=image_path,
+                verification_code=codigo,
+                is_verified=False,
+                cargo_id=cargo_id,
+            )
+            session.add(novo_usuario)
+            session.commit()
+
+            notificador = Notificador()
+            assunto  = "Código de Verificação — Oráculo Analista"
+            mensagem = f"""
+            <h3>Olá, {name}</h3>
+            <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
+            <p>Use este código para ativar sua conta.</p>
+            """
+            notificador.enviar_email(email, assunto, mensagem)
+
+            st.session_state.temp_email             = email
+            st.session_state.verificacao_pos_login  = False
+            st.success("Cadastro realizado. Verifique o código enviado por e-mail.")
+            return True
+
+        except Exception as e:
+            session.rollback()
+            st.error(f"Erro no cadastro/envio do código: {e}")
             return False
-
-        image_path = save_profile_image(profile_image, email)
-        codigo = gerar_codigo_verificacao()
-        senha_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-        novo_usuario = UserAnalise(
-            name=name,
-            whatsapp=whatsapp,
-            email=email,
-            password=senha_hash,
-            profile_image_path=image_path,
-            verification_code=codigo,
-            is_verified=False,
-            cargo_id=cargo_id,
-        )
-
-        session.add(novo_usuario)
-        session.commit()
-
-        notificador = Notificador()
-
-        assunto = "Código de Verificação - Oráculo Analista"
-        mensagem = f"""
-        <h3>Olá, {name}</h3>
-        <p>Seu código de verificação para o Oráculo Analista é: <strong>{codigo}</strong></p>
-        <p>Use este código para ativar sua conta.</p>
-        """
-
-        notificador.enviar_email(email, assunto, mensagem)
-
-        st.session_state.temp_email = email
-        st.session_state.verificacao_pos_login = False
-        st.success("Cadastro realizado. Verifique o código enviado por e-mail.")
-        return True
-
-    except Exception as e:
-        session.rollback()
-        st.error(f"Erro no cadastro/envio do código: {e}")
-        return False
-
-    finally:
-        session.close()
 
 
 # =========================
 # Verificação
 # =========================
 def verificar_codigo(email, codigo):
-    # fix: sessão fechada corretamente antes do st.rerun()
-    session = Session()
-    login_email = None
-    try:
-        user = session.query(UserAnalise).filter_by(email=email).first()
-
-        if user and user.verification_code == codigo:
-            user.is_verified = True
-            user.verification_code = None
-            session.commit()
-            login_email = email
-        else:
-            st.error("Código incorreto.")
-
-    finally:
-        session.close()
-
-    # fix: rerun executado FORA do bloco de sessão, após fechamento seguro
-    if login_email:
-        session2 = Session()
+    with Session() as session:
         try:
-            user_fresh = session2.query(UserAnalise).filter_by(email=login_email).first()
-            st.session_state.user = user_fresh
-            st.session_state.logged_in = True
-            st.session_state.codigo_confirmado = True
-            st.session_state.temp_email = None
-        finally:
-            session2.close()
-        st.rerun()
-        return True
+            user = session.query(UserAnalise).filter_by(email=email).first()
+            if user and user.verification_code == codigo:
+                user.is_verified      = True
+                user.verification_code = None
+                session.commit()
 
-    return False
+                with Session() as session2:
+                    user_fresh = session2.query(UserAnalise).filter_by(email=email).first()
+                    st.session_state.user              = user_fresh
+                    st.session_state.logged_in         = True
+                    st.session_state.codigo_confirmado = True
+                    st.session_state.temp_email        = None
+                    st.rerun()
+                return True
+
+            st.error("Código incorreto.")
+            return False
+        except Exception as e:
+            session.rollback()
+            st.error(f"Erro ao verificar código: {e}")
+            return False
 
 
 # =========================
 # Login
 # =========================
 def autenticar_usuario(email, password):
-    session = Session()
-    try:
-        user = session.query(UserAnalise).filter_by(email=email).first()
-
-        if user:
-            if not user.is_verified:
-                st.warning(
-                    "Sua conta ainda não foi verificada. "
-                    "Por favor, insira o código de verificação enviado para seu e-mail."
-                )
-                st.session_state.temp_email = user.email
-                st.session_state.verificacao_pos_login = True
-                return None
-
-            if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
-                return user
-
-        st.error("Credenciais inválidas ou conta não verificada.")
-        return None
-    finally:
-        session.close()
+    with Session() as session:
+        try:
+            user = session.query(UserAnalise).filter_by(email=email).first()
+            if user:
+                if not user.is_verified:
+                    st.warning(
+                        "Sua conta ainda não foi verificada. "
+                        "Por favor, insira o código de verificação enviado para seu e-mail."
+                    )
+                    st.session_state.temp_email            = user.email
+                    st.session_state.verificacao_pos_login = True
+                    return None
+                if user.password and bcrypt.checkpw(password.encode(), user.password.encode()):
+                    return user
+            st.error("Credenciais inválidas ou conta não verificada.")
+            return None
+        except Exception as e:
+            st.error(f"Erro ao autenticar: {e}")
+            return None
 
 
 # =========================
@@ -280,42 +250,36 @@ def interface():
     opcao = st.sidebar.radio("Selecione:", ["Login", "Cadastrar"])
 
     if opcao == "Cadastrar":
-        nome = st.sidebar.text_input("Nome")
-        zap = st.sidebar.text_input("WhatsApp")
-        email = st.sidebar.text_input("Email")
-        senha = st.sidebar.text_input("Senha", type="password")
-        imagem = st.sidebar.file_uploader(
-            "Imagem de Perfil", type=["png", "jpg", "jpeg"])
+        nome   = st.sidebar.text_input("Nome")
+        zap    = st.sidebar.text_input("WhatsApp")
+        email  = st.sidebar.text_input("Email")
+        senha  = st.sidebar.text_input("Senha", type="password")
+        imagem = st.sidebar.file_uploader("Imagem de Perfil", type=["png", "jpg", "jpeg"])
 
         if imagem:
             st.sidebar.image(imagem, caption="Pré-visualização", width=150)
 
-        # fix: usa o mesmo banco do SQLAlchemy para buscar cargos
-        import sqlite3
-        db_path = DATABASE_URL.replace("sqlite:///", "")
+        # Buscar cargos via SQLAlchemy (sem sqlite3 raw)
         cargos = []
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, nome FROM cargo")
-            cargos = cursor.fetchall()
-            conn.close()
+            with Session() as session:
+                rows   = session.query(Cargo).all()
+                cargos = [(c.id, c.nome) for c in rows]
         except Exception as e:
             st.sidebar.error(f"Erro ao buscar cargos: {e}")
 
-        cargo_opcoes = {nome: id_ for id_, nome in cargos}
+        cargo_opcoes  = {nome_c: id_ for id_, nome_c in cargos}
         default_index = 0
         if cargos:
-            for idx, (id_, nome) in enumerate(cargos):
-                if nome.lower() == "cliente":
+            for idx, (id_, nome_c) in enumerate(cargos):
+                if nome_c.lower() == "cliente":
                     default_index = idx
                     break
-            cargo_nome = st.sidebar.selectbox("Cargo", list(
-                cargo_opcoes.keys()), index=default_index)
-            cargo_id = cargo_opcoes[cargo_nome]
+            cargo_nome = st.sidebar.selectbox("Cargo", list(cargo_opcoes.keys()), index=default_index)
+            cargo_id   = cargo_opcoes[cargo_nome]
         else:
             cargo_nome = None
-            cargo_id = None
+            cargo_id   = None
 
         if st.sidebar.button("Cadastrar"):
             if not nome or not zap or not email or not senha:
@@ -323,23 +287,16 @@ def interface():
             elif not cargo_id:
                 st.sidebar.error("Selecione um cargo.")
             else:
-                cadastrar_usuario(
-                    name=nome,
-                    whatsapp=zap,
-                    email=email,
-                    password=senha,
-                    profile_image=imagem,
-                    cargo_id=cargo_id,
-                )
+                cadastrar_usuario(name=nome, whatsapp=zap, email=email,
+                                  password=senha, profile_image=imagem, cargo_id=cargo_id)
 
     elif opcao == "Login":
         email = st.sidebar.text_input("Email")
         senha = st.sidebar.text_input("Senha", type="password")
-
         if st.sidebar.button("Entrar"):
             user = autenticar_usuario(email, senha)
             if user:
-                st.session_state.user = user
+                st.session_state.user      = user
                 st.session_state.logged_in = True
                 st.rerun()
 
@@ -350,95 +307,63 @@ def interface():
                     "Sua conta ainda não foi verificada. "
                     "Por favor, insira o código de verificação enviado para seu e-mail."
                 )
-                codigo = st.text_input(
-                    "Código de Verificação", key="codigo_login")
+                codigo = st.text_input("Código de Verificação", key="codigo_login")
                 if st.button("Confirmar Código", key="confirmar_codigo_login"):
                     verificar_codigo(st.session_state.temp_email, codigo)
             else:
-                st.info(
-                    f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
+                st.info(f"Digite o código de verificação enviado para {st.session_state.temp_email}.")
+
                 if st.button("Reenviar Código"):
-                    session = Session()
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
-
-                        if not user:
-                            st.error("Usuário não encontrado para reenvio do código.")
-                        else:
-                            novo_codigo = gerar_codigo_verificacao()
-                            user.verification_code = novo_codigo
-                            session.commit()
-
-                            notificador = Notificador()
-
-                            assunto = "Código de Verificação - Oráculo Analista"
-                            mensagem = f"""
-                            <h3>Olá, {user.name}</h3>
-                            <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
-                            <p>Use este código para ativar sua conta.</p>
-                            """
-
-                            notificador.enviar_email(user.email, assunto, mensagem)
-                            st.success("Código reenviado com sucesso! Verifique seu e-mail.")
-
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao reenviar e-mail de verificação: {e}")
-
-                    finally:
-                        session.close()
-
-                codigo = st.text_input(
-                    "Código de Verificação", key="codigo_cadastro")
-                if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
-                    # fix: login automático após confirmação de código no fluxo de cadastro
-                    session = Session()
-                    user_para_login = None
-                    try:
-                        user = session.query(UserAnalise).filter_by(
-                            email=st.session_state.temp_email
-                        ).first()
-
-                        if not user:
-                            st.error("Usuário não encontrado.")
-                        elif codigo != user.verification_code:
-                            st.error("Código de verificação inválido.")
-                        else:
-                            user.is_verified = True
-                            user.verification_code = None
-                            session.commit()
-                            user_para_login = user.email
-                    except Exception as e:
-                        session.rollback()
-                        st.error(f"Erro ao confirmar código: {e}")
-                    finally:
-                        session.close()
-
-                    # fix: faz login automático fora do bloco de sessão
-                    if user_para_login:
-                        session3 = Session()
+                    with Session() as session:
                         try:
-                            user_fresh = session3.query(UserAnalise).filter_by(
-                                email=user_para_login
-                            ).first()
-                            st.session_state.user = user_fresh
-                            st.session_state.logged_in = True
-                            st.session_state.codigo_confirmado = True
-                            st.session_state.temp_email = None
-                        finally:
-                            session3.close()
-                        st.rerun()
+                            user = session.query(UserAnalise).filter_by(
+                                email=st.session_state.temp_email).first()
+                            if not user:
+                                st.error("Usuário não encontrado para reenvio do código.")
+                            else:
+                                novo_codigo            = gerar_codigo_verificacao()
+                                user.verification_code = novo_codigo
+                                session.commit()
+
+                                notificador = Notificador()
+                                assunto  = "Código de Verificação — Oráculo Analista"
+                                mensagem = f"""
+                                <h3>Olá, {user.name}</h3>
+                                <p>Seu novo código de verificação é: <strong>{novo_codigo}</strong></p>
+                                <p>Use este código para ativar sua conta.</p>
+                                """
+                                notificador.enviar_email(user.email, assunto, mensagem)
+                                st.success("Código reenviado com sucesso! Verifique seu e-mail.")
+                        except Exception as e:
+                            session.rollback()
+                            st.error(f"Erro ao reenviar e-mail de verificação: {e}")
+
+                codigo = st.text_input("Código de Verificação", key="codigo_cadastro")
+                if st.button("Confirmar Código", key="confirmar_codigo_cadastro"):
+                    with Session() as session:
+                        try:
+                            user = session.query(UserAnalise).filter_by(
+                                email=st.session_state.temp_email).first()
+                            if not user:
+                                st.error("Usuário não encontrado.")
+                            elif codigo != user.verification_code:
+                                st.error("Código de verificação inválido.")
+                            else:
+                                user.is_verified       = True
+                                user.verification_code = None
+                                session.commit()
+                                st.success("Conta verificada com sucesso!")
+                                st.session_state.temp_email = None
+                        except Exception as e:
+                            session.rollback()
+                            st.error(f"Erro ao confirmar código: {e}")
 
     if "verificar_pagamento" not in st.session_state:
         st.session_state.verificar_pagamento = False
 
     if st.session_state.verificar_pagamento:
         st.markdown("### 🔒 Verificação de Pagamento do Plano")
-        email_verificacao = st.text_input(
-            "Digite seu e-mail de cadastro:", key="email_verif")
-
+        email_verificacao = st.text_input("Digite seu e-mail de cadastro:", key="email_verif")
         if st.button("Verificar Status de Pagamento"):
             try:
                 response = requests.get(
@@ -446,12 +371,10 @@ def interface():
                     params={"email": email_verificacao},
                     timeout=20,
                 )
-
                 if response.status_code == 200:
                     dados = response.json()
                     if dados["status"] == "confirmado":
-                        st.success(
-                            "✅ Pagamento confirmado! Código de verificação:")
+                        st.success("✅ Pagamento confirmado! Código de verificação:")
                         st.code(dados["codigo_verificacao"])
                     else:
                         st.warning(dados["mensagem"])
@@ -468,164 +391,84 @@ def main():
     if not st.session_state.get("logged_in"):
         interface()
 
-        st.markdown(
-            """
+        st.markdown("""
             <style>
-            .titulo-principal {
-                font-size: 3rem;
-                font-weight: bold;
-                color: white;
-                text-align: center;
-                margin-bottom: 2rem;
-            }
-            .subtitulo {
-                font-size: 1.5rem;
-                font-weight: 600;
-                color: white;
-            }
-            .descricao-gradient {
-                font-size: 1.1rem;
-                background: -webkit-linear-gradient(45deg, violet, white);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
+            .titulo-principal  { font-size:3rem; font-weight:bold; color:white;
+                                 text-align:center; margin-bottom:2rem; }
+            .subtitulo         { font-size:1.5rem; font-weight:600; color:white; }
+            .descricao-gradient{ font-size:1.1rem;
+                                 background:-webkit-linear-gradient(45deg,violet,white);
+                                 -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+            </style>""", unsafe_allow_html=True)
 
         st.markdown(
             "<div class='titulo-principal'>🚀 Oráculo Analista: Transformando Dados em Decisões Estratégicas</div>",
-            unsafe_allow_html=True,
-        )
+            unsafe_allow_html=True)
 
         if os.path.exists("./src/img/oraculo-analista.jpg"):
             st.image("./src/img/oraculo-analista.jpg", width=700)
 
         st.markdown("---")
-
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(
-                "<div class='subtitulo'>📈 Aumento da Competitividade</div>", unsafe_allow_html=True)
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>📈 Aumento da Competitividade</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Análises ultrarrápidas que colocam sua empresa à frente do mercado<br>
                 - Decisões estratégicas baseadas em dados concretos e confiáveis<br>
-                - Vantagem competitiva real para crescer com segurança
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
+                - Vantagem competitiva real para crescer com segurança</div>""", unsafe_allow_html=True)
         with col2:
-            st.markdown(
-                "<div class='subtitulo'>🎯 Objetivo: Análises Precisas</div>", unsafe_allow_html=True)
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>🎯 Objetivo: Análises Precisas</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Extraia inteligência de documentos complexos com facilidade<br>
                 - Compreensão de dados vitais para acelerar estratégias<br>
-                - Menos achismo, mais assertividade nas decisões
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                - Menos achismo, mais assertividade nas decisões</div>""", unsafe_allow_html=True)
 
         st.markdown("---")
-
         col3, col4 = st.columns(2)
         with col3:
-            st.markdown(
-                "<div class='subtitulo'>🧠 Descomplicação de Dados Complexos</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>🧠 Descomplicação de Dados Complexos</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Interface amigável para empresários<br>
                 - Informações transformadas em ações claras e aplicáveis<br>
-                - Inteligência de dados acessível sem precisar ser técnico
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
+                - Inteligência de dados acessível sem precisar ser técnico</div>""", unsafe_allow_html=True)
         with col4:
-            st.markdown(
-                "<div class='subtitulo'>⚡ Agilidade na Tomada de Decisões</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>⚡ Agilidade na Tomada de Decisões</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Processamento rápido que responde no ritmo do seu negócio<br>
                 - Reduza o tempo entre problema e solução<br>
-                - Tome decisões urgentes com segurança e suporte confiável
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                - Tome decisões urgentes com segurança e suporte confiável</div>""", unsafe_allow_html=True)
 
         st.markdown("---")
-
         col5, col6 = st.columns(2)
         with col5:
-            st.markdown(
-                "<div class='subtitulo'>🌱 Sustentabilidade e Ética</div>", unsafe_allow_html=True)
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>🌱 Sustentabilidade e Ética</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Uso ético e inteligente dos dados<br>
                 - Alinhamento com práticas empresariais sustentáveis<br>
-                - Contribuição para decisões com impacto positivo a longo prazo
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
+                - Contribuição para decisões com impacto positivo a longo prazo</div>""", unsafe_allow_html=True)
         with col6:
-            st.markdown(
-                "<div class='subtitulo'>💼 Para Líderes Estratégicos</div>", unsafe_allow_html=True)
-            st.markdown(
-                """
-                <div class='descricao-gradient'>
+            st.markdown("<div class='subtitulo'>💼 Para Líderes Estratégicos</div>", unsafe_allow_html=True)
+            st.markdown("""<div class='descricao-gradient'>
                 - Ferramenta desenvolvida para CEOs, diretores e tomadores de decisão<br>
                 - Otimize fluxos e melhore reuniões com insights automáticos<br>
-                - Capacite sua liderança com inteligência preditiva
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                - Capacite sua liderança com inteligência preditiva</div>""", unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown(
-            "<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class='descricao-gradient'>
+        st.markdown("<div class='subtitulo'>✅ Resumo e Próximos Passos</div>", unsafe_allow_html=True)
+        st.markdown("""<div class='descricao-gradient'>
             - Transforme dados brutos em <strong>inteligência acionável</strong><br>
             - Capacite sua empresa a reagir com agilidade e precisão<br>
-            - Posicione sua marca no topo com o <strong>Oráculo Analista</strong>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            - Posicione sua marca no topo com o <strong>Oráculo Analista</strong></div>""",
+            unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown(
-            "<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
-
+        st.markdown("<div class='subtitulo'>▶️ Apresentação em Vídeo</div>", unsafe_allow_html=True)
         if os.path.exists(VIDEO_PATH):
             with open(VIDEO_PATH, "rb") as video_file:
                 st.sidebar.video(video_file.read())
 
         st.markdown("---")
-        st.markdown(
-            "<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>", unsafe_allow_html=True)
 
     else:
         user = st.session_state.user
@@ -640,26 +483,14 @@ def main():
         st.sidebar.write(f"WhatsApp: {user.whatsapp}")
 
         if st.sidebar.button("🔓 Sair do sistema"):
-            for key in [
-                "user",
-                "logged_in",
-                "codigo_confirmado",
-                "temp_email",
-                "name",
-                "email",
-                "image",
-                "primeiro_nome",
-                "messages",
-                "full_content",
-            ]:
+            for key in ["user", "logged_in", "codigo_confirmado", "temp_email",
+                        "name", "email", "image", "primeiro_nome", "messages", "full_content"]:
                 st.session_state.pop(key, None)
-
             st.rerun()
 
         oraculo_analista()
 
 
 if __name__ == "__main__":
-    st.set_page_config(page_title="Oráculo Analista",
-                       page_icon="📊", layout="wide")
+    st.set_page_config(page_title="Oráculo Analista", page_icon="📊", layout="wide")
     main()

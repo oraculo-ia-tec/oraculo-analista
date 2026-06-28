@@ -1,6 +1,5 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.0
-# Interface Streamlit integrada ao Runtime (Claude Code arch)
+# analista.py  —  Oráculo Analista  v2.1
 # ============================================================
 import io
 import json
@@ -15,9 +14,6 @@ import streamlit as st
 from docx import Document
 from PyPDF2 import PdfReader
 
-# ─────────────────────────────────────────────────────────────
-# Runtime (nova arquitetura Claude Code)
-# ─────────────────────────────────────────────────────────────
 from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
 from src.constants.settings import (
@@ -26,12 +22,15 @@ from src.constants.settings import (
     DEFAULT_MODEL,
 )
 from src.utils.helpers import truncate
-from src.utils.secrets import get_secret
 
 
 # =========================
-# Configurações
+# Configurações via st.secrets
 # =========================
+GROQ_API_KEY           = st.secrets["groq"]["GROQ_API_KEY"]
+GROQ_MODEL             = st.secrets["groq"]["GROQ_MODEL"]
+WEBHOOK_AGENDA_ANALISTA = st.secrets.get("webhooks", {}).get("WEBHOOK_AGENDA_ANALISTA", "")
+
 PROFILE_IMAGES_DIR = "./user_profiles/"
 os.makedirs(PROFILE_IMAGES_DIR, exist_ok=True)
 
@@ -45,10 +44,9 @@ icons = {
 # Runtime singleton por sessão
 # =========================
 def get_runtime() -> Runtime:
-    """Retorna o Runtime da sessão atual (criado uma vez por sessão)."""
     if "_runtime" not in st.session_state:
         st.session_state["_runtime"] = Runtime(
-            api_key=get_secret("GROQ_API_KEY", section="groq"),
+            api_key=GROQ_API_KEY,
             model=DEFAULT_MODEL,
             max_tokens=MAX_TOKENS_FREE_PLAN,
         )
@@ -159,10 +157,8 @@ def carregar_arquivos() -> list:
             return processados
         for file in uploaded:
             t = file.type
-            if t in (
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-excel",
-            ):
+            if t in ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     "application/vnd.ms-excel"):
                 res = read_xlsx(file)
             elif t == "application/pdf":
                 res = read_pdf(file)
@@ -170,10 +166,8 @@ def carregar_arquivos() -> list:
                 res = read_json(file)
             elif t in ("application/xml", "text/xml"):
                 res = read_xml(file)
-            elif t in (
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            ):
+            elif t in ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                       "application/msword"):
                 res = read_docx(file)
             elif t == "text/plain":
                 res = read_txt(file)
@@ -214,9 +208,9 @@ def mostrar_formulario_plano() -> None:
             )
         with col2:
             links = {
-                "Mensal - R$ 49,90":      ("Assinar Mensal",      "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc"),
-                "Trimestral - R$ 119,90": ("Assinar Trimestral",  "https://sandbox.asaas.com/c/jsmak76vdo5fke23"),
-                "Anual - R$ 369,90":      ("Assinar Anual",       "https://sandbox.asaas.com/c/adu6nd24lf8jauo3"),
+                "Mensal - R$ 49,90":      ("Assinar Mensal",     "https://sandbox.asaas.com/c/qmo94xid8f1i6tnc"),
+                "Trimestral - R$ 119,90": ("Assinar Trimestral", "https://sandbox.asaas.com/c/jsmak76vdo5fke23"),
+                "Anual - R$ 369,90":      ("Assinar Anual",      "https://sandbox.asaas.com/c/adu6nd24lf8jauo3"),
             }
             label, url = links[plano]
             st.link_button(label, url)
@@ -235,11 +229,10 @@ def mostrar_formulario_reuniao() -> None:
         data     = st.date_input("Data")
         hora     = st.time_input("Horário")
         if st.form_submit_button("Agendar"):
-            webhook = get_secret("WEBHOOK_AGENDA_ANALISTA")
             payload = {"nome": nome, "empresa": empresa, "whatsapp": whatsapp,
                        "email": email, "data": str(data), "hora": str(hora)}
             try:
-                r = requests.post(webhook, json=payload, timeout=20)
+                r = requests.post(WEBHOOK_AGENDA_ANALISTA, json=payload, timeout=20)
                 if r.status_code == 200:
                     st.success(f"✅ Obrigado {nome}, agendamento realizado!")
                     st.balloons()
@@ -266,7 +259,7 @@ def botoes_exportacao() -> None:
     except Exception as e:
         st.error(f"Erro ao gerar Excel: {e}")
     try:
-        pdf   = exp(format="pdf", messages=msgs)
+        pdf = exp(format="pdf", messages=msgs)
         st.download_button("📄 Baixar conversa em PDF", data=io.BytesIO(pdf),
                            file_name="chat_oraculo.pdf", mime="application/pdf")
     except Exception as e:
@@ -281,9 +274,9 @@ def oraculo_analista() -> None:
 
     st.markdown("""
         <style>
-        .highlight-creme  { background: linear-gradient(90deg,#f5f5dc,gold);
+        .highlight-creme  { background:linear-gradient(90deg,#f5f5dc,gold);
                             -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
-        .highlight-dourado{ background: linear-gradient(90deg,gold,#f5f5dc);
+        .highlight-dourado{ background:linear-gradient(90deg,gold,#f5f5dc);
                             -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
         </style>""", unsafe_allow_html=True)
 
@@ -339,7 +332,7 @@ def oraculo_analista() -> None:
             st.session_state["messages"] = []
         st.session_state["messages"].append({"role": "user", "content": prompt})
 
-        arquivos_sess = st.session_state.get("arquivos_processados", [])
+        arquivos_sess  = st.session_state.get("arquivos_processados", [])
         resposta_local = responder_pergunta_simples(prompt, arquivos_sess)
         if resposta_local:
             with st.chat_message("assistant", avatar=icons["assistant"]):
