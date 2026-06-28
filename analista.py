@@ -1,5 +1,5 @@
 # ============================================================
-# analista.py  —  Oráculo Analista  v2.2
+# analista.py  —  Oráculo Analista  v2.3
 # ============================================================
 import io
 import json
@@ -8,18 +8,15 @@ import time
 import xml.etree.ElementTree as ET
 
 import pandas as pd
-import requests
 import streamlit as st
 from docx import Document
 from PyPDF2 import PdfReader
 
 from src.runtime import Runtime
 from src.cost_tracker import render_cost_widget
-from src.constants.settings import (
-    MAX_TOKENS_FREE_PLAN,
-    DEFAULT_MODEL,
-)
+from src.constants.settings import MAX_TOKENS_FREE_PLAN, DEFAULT_MODEL
 from src.utils.helpers import truncate
+from src.styles.theme import apply_global_theme
 from agenda_analista import AgendaAnalista
 
 
@@ -37,7 +34,6 @@ icons = {
     "user":      "./src/img/usuario.jpg",
 }
 
-# Instância única da classe de agendamento
 _agenda = AgendaAnalista()
 
 
@@ -249,19 +245,12 @@ def botoes_exportacao() -> None:
 # =========================
 def oraculo_analista() -> None:
     atualizar_primeiro_nome()
-
-    st.markdown("""
-        <style>
-        .highlight-creme  { background:linear-gradient(90deg,#f5f5dc,gold);
-                            -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
-        .highlight-dourado{ background:linear-gradient(90deg,gold,#f5f5dc);
-                            -webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:bold; }
-        </style>""", unsafe_allow_html=True)
+    apply_global_theme()
 
     st.markdown(
-        "<h1 class='title'>Análise rápida e precisa com o "
-        "<span class='highlight-creme'>Oráculo</span> "
-        "<span class='highlight-dourado'>Analista</span></h1>",
+        "<h1 class='oa-title' style='font-size:2rem;text-align:left;'>Análise rápida e precisa com o "
+        "<span class='oa-gradient-creme'>Oráculo</span> "
+        "<span class='oa-gradient-ouro'>Analista</span></h1>",
         unsafe_allow_html=True,
     )
 
@@ -269,8 +258,7 @@ def oraculo_analista() -> None:
         st.sidebar.image("./src/img/perfil-analista.png", width=500)
 
     if st.sidebar.button("🔄 Limpar Conversa"):
-        runtime = get_runtime()
-        runtime.reset_session()
+        get_runtime().reset_session()
         st.rerun()
 
     render_cost_widget()
@@ -281,10 +269,10 @@ def oraculo_analista() -> None:
         st.session_state["full_content"]         = obter_resumo_arquivos(arquivos)
         st.subheader("Conteúdo dos Arquivos Carregados:")
         for i, arq in enumerate(arquivos):
-            titulo = arq.get("name", f"Arquivo {i+1}")
+            titulo_arq = arq.get("name", f"Arquivo {i+1}")
             if arq.get("pages"):
-                titulo += f" | {arq['pages']} páginas"
-            st.text_area(titulo, truncate(arq.get("text", ""), 3000), height=200)
+                titulo_arq += f" | {arq['pages']} páginas"
+            st.text_area(titulo_arq, truncate(arq.get("text", ""), 3000), height=200)
 
     if "messages" not in st.session_state:
         nome = st.session_state.get("primeiro_nome", "Usuário")
@@ -324,7 +312,6 @@ def oraculo_analista() -> None:
                 if intencao == "plano":
                     mostrar_formulario_plano()
                 else:
-                    # ⭐ AgendaAnalista assume o controle
                     _agenda.renderizar_formulario()
             return
 
@@ -339,13 +326,11 @@ def oraculo_analista() -> None:
                         container.markdown(text)
 
                     st.session_state["messages"].pop()
-
                     response = runtime.run(
                         user_input=prompt,
                         file_context=file_context,
                         stream_callback=_stream_cb,
                     )
-
                 container.markdown(response)
 
             except Exception as e:

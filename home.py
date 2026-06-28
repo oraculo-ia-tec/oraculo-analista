@@ -1,138 +1,132 @@
+# ============================================================
+# home.py  —  Oráculo Analista
+# Landing page refatorada com theme centralizado.
+# ============================================================
+import os
 import streamlit as st
-from PIL import Image
-from streamlit_extras.colored_header import colored_header
+from src.styles.theme import (
+    apply_global_theme, card, metrica, divider,
+    titulo, subtitulo, section_header,
+)
 
-# Carregar a imagem do robô
-robot_image = Image.open("./src/img/oraculo-analista-home2.png")  # Caminho da imagem
-
-# Configuração da página
 st.set_page_config(
     page_title="Oráculo Analista",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
-# Estilos personalizados para títulos e subtítulos
-st.markdown("""
-    <style>
-        /* Estilo para títulos principais (gradiente violeta com branco) */
-        .title {
-            font-size: 48px;
-            font-weight: bold;
-            color: white;
-            text-align: center;
-            background: linear-gradient(90deg, #8A2BE2, #FFFFFF);
-            -webkit-background-clip: text;
-            background-clip: text;
-            margin-bottom: 20px;
-        }
-        /* Estilo para subtítulos (gradiente violeta com branco) */
-        .subtitle {
-            font-size: 24px;
-            color: white;
-            text-align: center;
-            background: linear-gradient(90deg, #8A2BE2, #FFFFFF);
-            -webkit-background-clip: text;
-            background-clip: text;
-            margin-bottom: 40px;
-        }
-        /* Estilo para cabeçalhos de seção (gradiente violeta com branco) */
-        .section-header {
-            font-size: 32px;
-            font-weight: bold;
-            color: white;
-            text-align: left;
-            background: linear-gradient(90deg, #8A2BE2, #FFFFFF);
-            -webkit-background-clip: text;
-            background-clip: text;
-            margin-top: 40px;
-            margin-bottom: 20px;
-        }
-        /* Estilo para itens de benefícios (fonte branca) */
-        .benefit-item {
-            font-size: 18px;
-            color: white;
-            margin-bottom: 10px;
-        }
-        /* Estilo para ícones */
-        .icon {
-            font-size: 24px;
-            color: white;
-            margin-right: 10px;
-        }
-        /* Estilo geral para o fundo da página */
-        body {
-            background-color: #121212; /* Fundo escuro para destacar o gradiente */
-            color: white; /* Textos padrão em branco */
-        }
-    </style>
-""", unsafe_allow_html=True)
+apply_global_theme()
 
-# Título principal com imagem do robô
-st.image(robot_image, width=200, caption="Oráculo Analista")
-st.markdown('<p class="title">Oráculo Analista</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Sua ferramenta inteligente para análise de dados e tomada de decisões estratégicas</p>', unsafe_allow_html=True)
+# ── Hero ────────────────────────────────────────────────────
+col_img, col_txt = st.columns([1, 2], gap="large")
+with col_img:
+    if os.path.exists("./src/img/oraculo-analista-home2.png"):
+        st.image("./src/img/oraculo-analista-home2.png", use_container_width=True)
 
-# Seção 1: Introdução ao Oráculo Analista
-colored_header(label="Introdução ao Oráculo Analista", description="", color_name="blue-70")
-st.write("""
-O **Oráculo Analista** é uma ferramenta avançada que realiza a leitura e análise de documentos e bancos de dados de forma rápida e eficiente. 
-Seu objetivo é facilitar a tomada de decisões para empresários, proporcionando respostas precisas e soluções estratégicas.
-""")
+with col_txt:
+    titulo("Oráculo Analista")
+    subtitulo("Transformando documentos complexos em decisões estratégicas com IA")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🚀 Começar Agora", use_container_width=True, key="cta_hero"):
+        st.switch_page("app.py")
 
-# Seção 2: Vantagens do Oráculo Analista
-colored_header(label="Vantagens do Oráculo Analista", description="", color_name="blue-70")
-col1, col2 = st.columns(2)
+divider()
 
-with col1:
-    st.markdown('<p class="section-header">Agilidade nas Respostas</p>', unsafe_allow_html=True)
-    st.markdown("""
-    - Processamento rápido de grandes volumes de dados em tempo real.
-    - Respostas instantâneas a perguntas complexas sobre documentos.
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown('<p class="section-header">Precisão nas Análises</p>', unsafe_allow_html=True)
-    st.markdown("""
-    - Uso de inteligência artificial para interpretar dados e minimizar erros humanos.
-    - Resultados consistentes e confiáveis para decisões informadas.
-    """, unsafe_allow_html=True)
-
-# Seção 3: Benefícios para Empresários
-colored_header(label="Benefícios para Empresários", description="", color_name="blue-70")
-benefits = [
-    ("Aumento de Faturamento", "Identificação de oportunidades estratégicas e análise de mercado."),
-    ("Redução de Custos", "Detecção de ineficiências operacionais e otimização de processos."),
-    ("Previsibilidade e Segurança", "Projeções baseadas em dados históricos para planejamento estratégico.")
+# ── Métricas ────────────────────────────────────────────────
+section_header("Resultados comprovados")
+m1, m2, m3, m4 = st.columns(4)
+metricas = [
+    ("m1", "+300%",  "Produtividade"),
+    ("m2", "< 2s",   "Tempo de resposta"),
+    ("m3", "50+",    "Formatos suportados"),
+    ("m4", "100%",   "Dados seguros"),
 ]
+for col, (_, val, lbl) in zip([m1, m2, m3, m4], metricas):
+    with col:
+        st.markdown(metrica(val, lbl), unsafe_allow_html=True)
 
-for title, description in benefits:
-    st.markdown(f'<p class="section-header">{title}</p>', unsafe_allow_html=True)
-    st.markdown(f'<p class="benefit-item">{description}</p>', unsafe_allow_html=True)
+divider()
 
-# Seção 4: Resultados Gerados pelo Oráculo Analista
-colored_header(label="Resultados Gerados pelo Oráculo Analista", description="", color_name="blue-70")
-results = [
-    ("Decisões Baseadas em Dados", "Adoção de uma abordagem orientada por dados para decisões mais eficazes."),
-    ("Eficiência Operacional", "Melhoria nos processos de negócios e redução de tarefas administrativas."),
-    ("Crescimento Sustentável", "Foco em estratégias de longo prazo para crescimento saudável.")
-]
+# ── Vantagens ───────────────────────────────────────────────
+section_header("Por que o Oráculo Analista?")
+v1, v2, v3 = st.columns(3)
+with v1:
+    st.markdown(card(
+        "⚡", "Agilidade nas Respostas",
+        "Processa grandes volumes de dados em tempo real. "
+        "Respostas instantâneas para perguntas complexas sobre seus documentos."
+    ), unsafe_allow_html=True)
+with v2:
+    st.markdown(card(
+        "🎯", "Precisão nas Análises",
+        "IA avançada interpreta dados e minimiza erros humanos. "
+        "Resultados consistentes para decisões seguras."
+    ), unsafe_allow_html=True)
+with v3:
+    st.markdown(card(
+        "🔒", "Segurança Total",
+        "Seus dados nunca saem do ambiente seguro. "
+        "Conformidade com boas práticas de privacidade."
+    ), unsafe_allow_html=True)
 
-for title, description in results:
-    st.markdown(f'<p class="section-header">{title}</p>', unsafe_allow_html=True)
-    st.markdown(f'<p class="benefit-item">{description}</p>', unsafe_allow_html=True)
+divider()
 
-# Seção 5: Conclusão
-colored_header(label="Conclusão", description="", color_name="blue-70")
-st.write("""
-O **Oráculo Analista** é uma solução poderosa que transforma a maneira como os empresários interagem com informações complexas e grandes volumes de dados. 
-Com suas vantagens e benefícios, ele não só facilita a tomada de decisões, mas também garante resultados significativos em eficiência e crescimento, tornando-se um aliado indispensável para qualquer empresário que busque inovação e agilidade nos negócios.
-""")
+# ── Benefícios ──────────────────────────────────────────────
+section_header("Benefícios para Empresários")
+b1, b2, b3 = st.columns(3)
+with b1:
+    st.markdown(card(
+        "📈", "Aumento de Faturamento",
+        "Identifique oportunidades estratégicas com análise de mercado baseada em dados reais."
+    ), unsafe_allow_html=True)
+with b2:
+    st.markdown(card(
+        "💰", "Redução de Custos",
+        "Detecte ineficiências operacionais e otimize processos antes que virem prejuízo."
+    ), unsafe_allow_html=True)
+with b3:
+    st.markdown(card(
+        "🔮", "Previsibilidade",
+        "Projeções baseadas em histórico real para planejamento estratégico de longo prazo."
+    ), unsafe_allow_html=True)
 
-# Botão de Chamada à Ação
-st.markdown('<div style="text-align: center; margin-top: 40px;">', unsafe_allow_html=True)
-if st.button("Comece Agora ➡️", use_container_width=True):
-    st.write("Redirecionando para o cadastro...")
-    # Aqui você pode adicionar a lógica para redirecionar o usuário para a página de cadastro
-st.markdown('</div>', unsafe_allow_html=True)
+divider()
+
+# ── Resultados ──────────────────────────────────────────────
+section_header("Resultados Gerados")
+r1, r2, r3 = st.columns(3)
+with r1:
+    st.markdown(card(
+        "🧠", "Decisões Baseadas em Dados",
+        "Abandone o achismo. Adote uma abordagem orientada por dados para decisões mais eficazes."
+    ), unsafe_allow_html=True)
+with r2:
+    st.markdown(card(
+        "⚙️", "Eficiência Operacional",
+        "Melhore processos de negócio e reduza tarefas administrativas repetitivas."
+    ), unsafe_allow_html=True)
+with r3:
+    st.markdown(card(
+        "🌱", "Crescimento Sustentável",
+        "Foco em estratégias de longo prazo para crescimento saudável e consistente."
+    ), unsafe_allow_html=True)
+
+divider()
+
+# ── CTA final ───────────────────────────────────────────────
+st.markdown("<br>", unsafe_allow_html=True)
+col_l, col_c, col_r = st.columns([1, 2, 1])
+with col_c:
+    st.markdown(
+        '<div style="text-align:center;color:#b0b8d1;margin-bottom:1rem;">'
+        'Junte-se a empresários que já tomam decisões mais rápidas e precisas.</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🚀 Começar Agora — Grátis", use_container_width=True, key="cta_bottom"):
+        st.switch_page("app.py")
+
+st.markdown(
+    "<br><small><center>Desenvolvido com ❤️ por Oráculos AI</center></small>",
+    unsafe_allow_html=True,
+)
